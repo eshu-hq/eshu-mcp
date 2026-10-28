@@ -39,3 +39,7 @@ imports them first. See
 Run `python3 scripts/check-parity.py`. CI runs the same check on every push
 and pull request. The in-tree implementation is removed only after production
 acceptance.
+
+Path-aware gates (`lint`, `test`, `race`, `shell`, `image`, `govulncheck`,
+`gosec`, `ci-complete`) run from `.github/workflows/ci.yml`; `make ci` is
+the local parity command. See [CONTRIBUTING.md](CONTRIBUTING.md).

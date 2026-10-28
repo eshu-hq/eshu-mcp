@@ -1,0 +1,27 @@
+# Org lint set for eshu collector repos (see the CI-gates epic): govet,
+# staticcheck (which covers the gosimple family in golangci-lint v2),
+# ineffassign, unused, errcheck; formatter gofumpt.
+# Pinned to golangci-lint v2.12.2, the version Eshu uses. No baselines, no
+# new-code-only mode: lint runs on the whole repo and every exclusion needs
+# a reason plus a linked open issue on the same lines.
+version: "2"
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - errcheck
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+formatters:
+  enable:
+    - gofumpt
+issues:
+  # The default of 50 hides backlog behind nondeterministic windows.
+  # Leave the census uncapped so the gate always reports every finding.
+  max-issues-per-linter: 0
+  max-same-issues: 0

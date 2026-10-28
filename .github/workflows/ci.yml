@@ -1,0 +1,325 @@
+# CI gates for eshu-mcp. Lane contract (see CONTRIBUTING.md): frozen job
+# names lint, test, race, shell, image, govulncheck, gosec, with
+# ci-complete as the only required context. A PR only pays for lanes its
+# paths can affect; push-to-main and a manual workflow_dispatch run record
+# every lane; the weekly schedule runs govulncheck and gosec only.
+#
+# Empty-repo stage: there is no go.mod, no Go source, no Dockerfile, and no
+# shell script yet. Go lanes (lint, test, race, govulncheck, gosec) and the
+# image lane still merge as configured paths but self-skip with a clear
+# message until their inputs land, so the first code PR is already gated.
+# The contract-parity workflow stays separate until the reusable-workflow
+# move (issue #10).
+#
+# When the first go.mod lands, switch every setup-go step to
+# `go-version-file: go.mod` and measure the coverage baseline (issue #11).
+name: ci
+
+on:
+  pull_request:
+  push:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # No Go code exists, so no baseline can be measured yet. Starts at 0 and
+  # may only rise: the first Go package measures the baseline here and
+  # ratchets it toward 90 (issue #11). Never lower it.
+  COVERAGE_FLOOR: 0
+  GO_VERSION: "1.26.10"
+  GOLANGCI_VERSION: v2.12.2
+  GOSEC_VERSION: v2.30.0
+  GOVULNCHECK_VERSION: v1.9.0
+  ACTIONLINT_VERSION: v1.7.12
+
+jobs:
+  changes:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      docs: ${{ steps.filter.outputs.docs }}
+      go: ${{ steps.filter.outputs.go }}
+      fixtures: ${{ steps.filter.outputs.fixtures }}
+      shell: ${{ steps.filter.outputs.shell }}
+      deps: ${{ steps.filter.outputs.deps }}
+      image: ${{ steps.filter.outputs.image }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+      misc: ${{ steps.filter.outputs.misc }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          predicate-quantifier: 'some-with-excludes'
+          filters: |
+            docs:
+              - 'README.md'
+              - 'LICENSE'
+              - '**/*.md'
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.golangci.yml'
+            fixtures:
+              - 'testdata/**'
+              - '**/*.json'
+              - '**/*.yaml'
+              - '**/*.yml'
+              - '*.example.*'
+            shell:
+              - '**/*.sh'
+            deps:
+              - 'go.mod'
+              - 'go.sum'
+            image:
+              - 'Dockerfile'
+              - '.dockerignore'
+            workflows:
+              - '.github/workflows/**'
+              - '.github/dependabot.yml'
+            misc:
+              - '**'
+              - '!**/*.go'
+              - '!go.mod'
+              - '!go.sum'
+              - '!.golangci.yml'
+              - '!testdata/**'
+              - '!**/*.json'
+              - '!**/*.yaml'
+              - '!**/*.yml'
+              - '!*.example.*'
+              - '!**/*.sh'
+              - '!Dockerfile'
+              - '!.dockerignore'
+              - '!.github/workflows/**'
+              - '!.github/dependabot.yml'
+              - '!README.md'
+              - '!LICENSE'
+              - '!**/*.md'
+
+  lint:
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.go == 'true' || needs.changes.outputs.workflows == 'true' || needs.changes.outputs.misc == 'true' || (needs.changes.result != 'success' && github.event_name != 'pull_request' && github.event_name != 'schedule'))
+    needs: [changes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - id: preflight
+        run: |
+          if [ -f go.mod ]; then
+            echo "has-go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-go=false" >> "$GITHUB_OUTPUT"
+            echo "skip: no go.mod yet; lint activates with the first Go module."
+          fi
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: go vet ./...
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${{ env.GOLANGCI_VERSION }}
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: golangci-lint run ./...
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: test -z "$(golangci-lint fmt --diff ./... 2>/dev/null)"
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: go mod tidy -diff
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: test -z "$(git ls-files '*.go' | xargs wc -l | grep -v ' total$' | awk '$1 > 500')"
+      - if: needs.changes.outputs.workflows == 'true' || github.event_name != 'pull_request'
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@${{ env.ACTIONLINT_VERSION }}
+          actionlint .github/workflows/*.yml
+
+  test:
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.go == 'true' || needs.changes.outputs.fixtures == 'true' || needs.changes.outputs.workflows == 'true' || needs.changes.outputs.misc == 'true' || (needs.changes.result != 'success' && github.event_name != 'pull_request' && github.event_name != 'schedule'))
+    needs: [changes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - id: preflight
+        run: |
+          if [ -f go.mod ]; then
+            echo "has-go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-go=false" >> "$GITHUB_OUTPUT"
+            echo "skip: no go.mod yet; test activates with the first Go module."
+          fi
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: go build ./...
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: go test ./... -count=1
+
+  race:
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.go == 'true' || needs.changes.outputs.workflows == 'true' || needs.changes.outputs.misc == 'true' || (needs.changes.result != 'success' && github.event_name != 'pull_request' && github.event_name != 'schedule'))
+    needs: [changes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - id: preflight
+        run: |
+          if [ -f go.mod ]; then
+            echo "has-go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-go=false" >> "$GITHUB_OUTPUT"
+            echo "skip: no go.mod yet; race activates with the first Go module."
+          fi
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: go test ./... -race -count=1 -covermode=atomic -coverprofile=coverage.out
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: |
+          go tool cover -func=coverage.out > cover.func
+          total=$(awk '/^total:/ {gsub(/%/, "", $3); print $3}' cover.func)
+          echo "total=${total}% floor=${{ env.COVERAGE_FLOOR }}%"
+          {
+            echo "## Coverage"
+            echo ""
+            echo "Total ${total}% (floor ${{ env.COVERAGE_FLOOR }}%). Per-package statement coverage:"
+            echo ""
+            echo "| Package | Covered | Statements | Coverage |"
+            echo "| --- | --- | --- | --- |"
+            awk 'NR > 1 {n=split($1, a, ":"); file=a[1]; pkg=file; sub(/\/[^/]*$/, "", pkg); stmts[pkg]+=$2; if ($3 > 0) cov[pkg]+=$2} END {for (p in stmts) printf "| %s | %d | %d | %.1f%% |\n", p, cov[p]+0, stmts[p], 100*(cov[p]+0)/stmts[p]}' coverage.out | sort
+          } >> "$GITHUB_STEP_SUMMARY"
+          awk -v total="$total" -v floor="${{ env.COVERAGE_FLOOR }}" 'BEGIN {exit !(total + 0 >= floor + 0)}'
+      - if: steps.preflight.outputs.has-go == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-profile
+          path: |
+            coverage.out
+            cover.func
+          retention-days: 14
+
+  shell:
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.shell == 'true' || (needs.changes.result != 'success' && github.event_name != 'pull_request' && github.event_name != 'schedule'))
+    needs: [changes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: git ls-files -z '*.sh' | xargs -0 -r shellcheck
+
+  image:
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.image == 'true' || (needs.changes.result != 'success' && github.event_name != 'pull_request' && github.event_name != 'schedule'))
+    needs: [changes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: preflight
+        run: |
+          if [ -f Dockerfile ]; then
+            echo "has-image=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-image=false" >> "$GITHUB_OUTPUT"
+            echo "skip: no Dockerfile yet; image activates with the first service image."
+          fi
+      - if: steps.preflight.outputs.has-image == 'true'
+        name: Build the image without pushing it
+        run: docker build -t eshu-mcp:ci .
+
+  govulncheck:
+    if: always() && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.deps == 'true' || (needs.changes.result != 'success' && github.event_name != 'pull_request' && github.event_name != 'schedule'))
+    needs: [changes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - id: preflight
+        run: |
+          if [ -f go.mod ]; then
+            echo "has-go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-go=false" >> "$GITHUB_OUTPUT"
+            echo "skip: no go.mod yet; govulncheck activates with the first Go module."
+          fi
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: govulncheck -scan package ./...
+      - if: failure() && github.event_name == 'schedule'
+        run: |
+          title="govulncheck findings $(date -u +%F)"
+          open=$(gh issue list --search "$title" --state open --json number --jq 'length')
+          test "$open" -gt 0 || gh issue create --title "$title" --label security --body "Weekly govulncheck run failed; see the linked run."
+
+  gosec:
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - id: preflight
+        run: |
+          if [ -f go.mod ]; then
+            echo "has-go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-go=false" >> "$GITHUB_OUTPUT"
+            echo "skip: no go.mod yet; gosec activates with the first Go module."
+          fi
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: go install github.com/securego/gosec/v2/cmd/gosec@${{ env.GOSEC_VERSION }}
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: gosec -no-fail -fmt=sarif -out gosec.sarif ./...
+      - if: steps.preflight.outputs.has-go == 'true'
+        run: |
+          count=$(jq '[.runs[].results[]] | length' gosec.sarif)
+          echo "gosec findings: ${count}" >> "$GITHUB_STEP_SUMMARY"
+      - if: steps.preflight.outputs.has-go == 'true' && always()
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+
+  ci-complete:
+    if: always()
+    needs: [changes, lint, test, race, shell, image, govulncheck, gosec]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - run: |
+          printf '%s\n' '${{ toJSON(needs) }}' | python3 -c "import json,sys; sys.exit(1 if any(j.get('result') in ('failure', 'cancelled') for j in json.load(sys.stdin).values()) else 0)"
