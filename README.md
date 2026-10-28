@@ -43,3 +43,5 @@ acceptance.
 Path-aware gates (`lint`, `test`, `race`, `shell`, `image`, `govulncheck`,
 `gosec`, `ci-complete`) run from `.github/workflows/ci.yml`; `make ci` is
 the local parity command. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+<!-- ci-probe: docs-only lane check, removed before merge -->
