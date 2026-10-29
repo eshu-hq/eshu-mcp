@@ -5,17 +5,20 @@ Refs `eshu-hq/eshu#8873`, part of `eshu-hq/eshu#6707`.
 ## Source
 
 - Repository: `github.com/eshu-hq/eshu`.
-- Commit: `e4c385f493494ed9d6c7f192b04ce0255361f621`
-  (`origin/main` at seed time).
+- Commit: `9922b492d8a3a25ef87b39d38864b36ff522a6ce`
+  (`origin/main` at reseed time, 2026-10-29). The prior seed used
+  `e4c385f493494ed9d6c7f192b04ce0255361f621` (168 tools).
 - Ownership map: `go/cmd/mcp-server/CUTOVER_OWNERSHIP.md`, recorded by
   merged `eshu-hq/eshu#9437` and tightened by `eshu-hq/eshu#9445`.
 - Destination plan (preparation only, nothing pushed by it):
   `docs/internal/evidence/8873-eshu-mcp-destination-plan.md` in the source
   tree.
 
-Note: the assigning brief said 170 tools. The source census pins 168
-(`censusToolCount = 168` in `go/internal/mcp/tool_registry_census_test.go`).
-This seed follows the source: 168.
+Note: the assigning brief said 170 tools. The source census pins 169
+(`censusToolCount = 169` in `go/internal/mcp/tool_registry_census_test.go`
+at the reseed commit). This seed follows the source: 169, ending at
+`search_dockerfile_installs` (restored from `eshu-hq/eshu#9303`, which the
+prior 168-tool seed predated).
 
 ## File mapping
 
@@ -28,7 +31,9 @@ This seed follows the source: 168.
 ## Hashes (source commit)
 
 - `CUTOVER_OWNERSHIP.md`:
-  `71b005ee7305ca0768f38694ac6de237901d963df75d4077dd57e189bfadc89f`
+  `1daf8a6d7637981a8db8d08485fad77561c4749bbd794d3c9671d79bfe7a85df`
+  (prior seed: `71b005ee7305ca0768f38694ac6de237901d963df75d4077dd57e189bfadc89f`
+  at `e4c385f4`)
 - `result/shape/shape.go`:
   `e2ca3bf593694d87aaa3207b5236f199f4ba42b2537ab3a199658d83140fd82b`
 - `contract/tool/contract.go`:

@@ -16,7 +16,11 @@ import (
 func testClient(t *testing.T, baseURL string) *readcontract.Client {
 	t.Helper()
 
-	return readcontract.NewClient(readcontract.DefaultConfig(baseURL, ""))
+	client, err := readcontract.NewClient(readcontract.DefaultConfig(baseURL, ""))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	return client
 }
 
 // stubCore serves canned answers and records what the dispatch sent. The

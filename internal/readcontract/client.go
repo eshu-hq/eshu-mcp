@@ -3,6 +3,7 @@ package readcontract
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -82,7 +83,20 @@ type Client struct {
 // NewClient builds a Client from cfg. It never follows redirects: no
 // MCP-reachable route redirects on purpose, and following one could carry
 // the Authorization header somewhere the route builder did not intend.
-func NewClient(cfg Config) *Client {
+// Non-positive Timeout and ResponseByteBudget fall back to the pinned
+// defaults so a zero Config cannot silently disable the call timeout or the
+// body budget; an empty BaseURL is rejected because no request could be
+// addressed.
+func NewClient(cfg Config) (*Client, error) {
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = DefaultTimeout
+	}
+	if cfg.ResponseByteBudget <= 0 {
+		cfg.ResponseByteBudget = DefaultResponseByteBudget
+	}
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		return nil, errors.New("readcontract: BaseURL must not be empty")
+	}
 	return &Client{
 		cfg: cfg,
 		http: &http.Client{
@@ -91,7 +105,7 @@ func NewClient(cfg Config) *Client {
 				return http.ErrUseLastResponse
 			},
 		},
-	}
+	}, nil
 }
 
 // RawRequest is one dispatch request: the resolved method, path, query, and
@@ -150,9 +164,14 @@ func (c *Client) DoRaw(ctx context.Context, route RawRequest, authHeader string)
 			return
 		}
 	}()
-	raw, err := io.ReadAll(resp.Body)
+	// The budget caps the live read like Do does: an over-budget core answer
+	// fails here instead of landing in memory for post-read budgeting.
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(c.cfg.ResponseByteBudget)+1))
 	if err != nil {
 		return resp.StatusCode, nil, fmt.Errorf("readcontract: read %s %s: %w", route.Method, route.Path, err)
+	}
+	if len(raw) > c.cfg.ResponseByteBudget {
+		return resp.StatusCode, nil, fmt.Errorf("readcontract: read %s %s: %w", route.Method, route.Path, ErrOverBudget)
 	}
 	return resp.StatusCode, raw, nil
 }

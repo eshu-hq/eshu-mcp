@@ -1,9 +1,10 @@
 # Walking skeleton (Refs `eshu-hq/eshu#9498`, part of `eshu-hq/eshu#6707`)
 
 The destination builds, tests, and ships as its own module. It serves the
-pinned 168-tool registry and reaches core truth only through versioned HTTP
-read contracts. Tool dispatch over those clients lands next; this skeleton
-proves the independent build, test, and image steps first.
+pinned 169-tool registry and reaches core truth only through versioned HTTP
+read contracts. Tool dispatch, the router, the HTTP/SSE transport, and edge
+credential handling are landed: this is the full read path, proven by the
+independent build, test, and image steps.
 
 ## What is here
 
@@ -11,24 +12,36 @@ proves the independent build, test, and image steps first.
   core implementation packages exists anywhere in this tree.
 - `doc.go`, `registry.go`: the served registry, embedded from
   `contracts/tool-registry/v1/tools.json`. Names and order are contractual;
-  drift fails the build.
+  drift fails the build. A load failure fails startup fast instead of
+  serving an empty contract.
 - `internal/readcontract/`: the versioned HTTP client seam. Pinned bounds
   are `DefaultTimeout` 30s, `DefaultResponseByteBudget` 262144 bytes, and
-  the `application/eshu.envelope+json` Accept header. The bearer credential
-  travels only in the Authorization header and is never logged.
-- `cmd/eshu-mcp/`: the binary. Today it exposes `GET /healthz` (contract
-  version, tool count, core origin). `--core-base-url` is required. The
-  server carries no credential yet; the `ESHU_API_KEY` env contract arrives
-  with tool dispatch so the key never appears in process flags.
-- `Dockerfile`: multi-stage build, non-root runtime, no shell.
+  the `application/eshu.envelope+json` Accept header. Live reads are capped
+  by the budget on the wire, and client construction validates its bounds.
+  The bearer token travels only in the Authorization header and is never
+  logged.
+- `internal/dispatch/`: the 27 ported tool families plus the response
+  budget, envelope rendering, and sweep-verified route resolutions.
+- `internal/router/`: request validation, surface advertisement, and the
+  `call_tool`/`find_tool` engine (`find_tool` answers ranker-unavailable
+  until the ranker increment).
+- `internal/mcpserver/`: the HTTP transport (`GET /health`, `GET /sse`,
+  `POST /mcp/message`) with edge auth that refuses credential-less callers
+  and otherwise forwards the caller credential verbatim to core.
+- `cmd/eshu-mcp/`: the binary. It exposes `GET /healthz` (contract
+  version, tool count, core origin) plus the transport routes.
+  `--core-base-url` is required. `ESHU_API_KEY` sets the edge credential
+  posture; the key never appears in process flags, and every dispatch
+  forwards the caller credential to core for admission.
+- `Dockerfile`: multi-stage build, digest-pinned non-root runtime, no shell.
 
 ## Proof (local, this increment)
 
 - `go build ./...`, `go test ./... -count=1`, and the race suite pass.
-- `GET /healthz` answers `{"contract":"v1","tools":168}` from the built
-  binary and from the built image; unknown paths answer 404.
-- `python3 scripts/check-parity.py` still passes: the contract surface is
-  unchanged by this increment.
+- `GET /healthz` answers the contract version, 169 tools, and the
+  core origin from the built binary; unknown paths answer 404.
+- `python3 scripts/check-parity.py` passes: 169 tools, first `find_code`,
+  last `search_dockerfile_installs`, source commit `9922b49`.
 
 ## NOT_CHECKED
 

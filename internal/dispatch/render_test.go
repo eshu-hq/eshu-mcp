@@ -29,7 +29,11 @@ func hangingClient(t *testing.T, delay time.Duration) *readcontract.Client {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return readcontract.NewClient(readcontract.DefaultConfig(srv.URL, ""))
+	client, err := readcontract.NewClient(readcontract.DefaultConfig(srv.URL, ""))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	return client
 }
 
 // TestToolErrorResultShapes proves the error renderer types timeouts and

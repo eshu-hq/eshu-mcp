@@ -32,6 +32,16 @@ func (failCloseBody) Close() error { return errors.New("close boom") }
 // roundTripFunc adapts a function to http.RoundTripper for transport stubs.
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
+// mustClient builds a test client or fails: no test proceeds with a nil client.
+func mustClient(t *testing.T, cfg Config) *Client {
+	t.Helper()
+	client, err := NewClient(cfg)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	return client
+}
+
 // RoundTrip runs the stubbed round trip.
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
@@ -40,7 +50,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { re
 func TestDoRawToleratesCloseError(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient(DefaultConfig("https://core:8443", ""))
+	client := mustClient(t, DefaultConfig("https://core:8443", ""))
 	client.http = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -85,7 +95,7 @@ func TestDoSendsContractHeaders(t *testing.T) {
 	t.Cleanup(srv2.Close)
 
 	c := DefaultConfig(srv2.URL, "secret-key")
-	client := NewClient(c)
+	client := mustClient(t, c)
 	body, err := client.Do(context.Background(), "repositories", url.Values{"limit": {"5"}})
 	if err != nil {
 		t.Fatalf("Do() failed: %v", err)
@@ -117,7 +127,7 @@ func TestDoToleratesTrailingSlashBaseURL(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := NewClient(DefaultConfig(srv.URL+"/", "k"))
+	client := mustClient(t, DefaultConfig(srv.URL+"/", "k"))
 	if _, err := client.Do(context.Background(), "status", nil); err != nil {
 		t.Fatalf("Do() failed: %v", err)
 	}
@@ -136,7 +146,7 @@ func TestDoTimeout(t *testing.T) {
 
 	cfg := DefaultConfig(srv.URL, "k")
 	cfg.Timeout = 50 * time.Millisecond
-	client := NewClient(cfg)
+	client := mustClient(t, cfg)
 	_, err := client.Do(context.Background(), "slow", nil)
 	if err == nil {
 		t.Fatal("Do() succeeded against a hanging route, want a timeout error")
@@ -152,7 +162,7 @@ func TestDoRejectsOverBudgetBody(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	cfg := DefaultConfig(srv.URL, "k")
-	client := NewClient(cfg)
+	client := mustClient(t, cfg)
 	_, err := client.Do(context.Background(), "big", nil)
 	if !errors.Is(err, ErrOverBudget) {
 		t.Fatalf("Do() error = %v, want ErrOverBudget", err)
@@ -168,7 +178,7 @@ func TestDoMapsNon2xx(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := NewClient(DefaultConfig(srv.URL, "k"))
+	client := mustClient(t, DefaultConfig(srv.URL, "k"))
 	_, err := client.Do(context.Background(), "denied", nil)
 	var statusErr *StatusError
 	if !errors.As(err, &statusErr) {
@@ -191,7 +201,7 @@ func TestDoClipsLongErrorSnippet(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := NewClient(DefaultConfig(srv.URL, "k"))
+	client := mustClient(t, DefaultConfig(srv.URL, "k"))
 	_, err := client.Do(context.Background(), "gateway", nil)
 	var statusErr *StatusError
 	if !errors.As(err, &statusErr) {
@@ -228,7 +238,7 @@ func TestDoReportsStatusWhenBodyBreaks(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := NewClient(DefaultConfig(srv.URL, "k"))
+	client := mustClient(t, DefaultConfig(srv.URL, "k"))
 	_, err := client.Do(context.Background(), "broken", nil)
 	var statusErr *StatusError
 	if !errors.As(err, &statusErr) {
@@ -248,7 +258,7 @@ func TestDoReadsFullBody(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := NewClient(DefaultConfig(srv.URL, "k"))
+	client := mustClient(t, DefaultConfig(srv.URL, "k"))
 	body, err := client.Do(context.Background(), "packet", nil)
 	if err != nil {
 		t.Fatalf("Do() failed: %v", err)
@@ -279,7 +289,7 @@ func TestDoRawForwardsCredentialVerbatim(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(DefaultConfig(srv.URL, ""))
+	client := mustClient(t, DefaultConfig(srv.URL, ""))
 	status, body, err := client.DoRaw(context.Background(), RawRequest{
 		Method: http.MethodPost,
 		Path:   "/api/v0/repos/r/files/read",
@@ -317,7 +327,7 @@ func TestDoRawDoesNotFollowRedirects(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(DefaultConfig(srv.URL, ""))
+	client := mustClient(t, DefaultConfig(srv.URL, ""))
 	status, _, err := client.DoRaw(context.Background(), RawRequest{
 		Method: http.MethodGet,
 		Path:   "/api/v0/repos//summary",
@@ -327,5 +337,50 @@ func TestDoRawDoesNotFollowRedirects(t *testing.T) {
 	}
 	if status != http.StatusTemporaryRedirect {
 		t.Errorf("DoRaw() status = %d, want the un-followed 307", status)
+	}
+}
+
+// TestNewClientRejectsEmptyBaseURL proves a client without an origin fails
+// at construction instead of failing every request it attempts.
+func TestNewClientRejectsEmptyBaseURL(t *testing.T) {
+	t.Parallel()
+
+	if _, err := NewClient(DefaultConfig("", "k")); err == nil {
+		t.Fatal("NewClient(\"\") = nil, want the empty-BaseURL error")
+	}
+}
+
+// TestNewClientDefaultsZeroGuards proves a zero Config cannot silently
+// disable the call timeout or the body budget.
+func TestNewClientDefaultsZeroGuards(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient(Config{BaseURL: "https://core:8443"})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	if client.cfg.Timeout != DefaultTimeout {
+		t.Errorf("Timeout = %v, want DefaultTimeout %v", client.cfg.Timeout, DefaultTimeout)
+	}
+	if client.cfg.ResponseByteBudget != DefaultResponseByteBudget {
+		t.Errorf("ResponseByteBudget = %d, want %d", client.cfg.ResponseByteBudget, DefaultResponseByteBudget)
+	}
+}
+
+// TestDoRawRejectsOverBudgetBody proves the live dispatch path caps the
+// wire read at the configured budget instead of buffering an unbounded body.
+func TestDoRawRejectsOverBudgetBody(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeResponse(t, w, `{"data":"`+strings.Repeat("x", 1024)+`"}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := DefaultConfig(srv.URL, "")
+	cfg.ResponseByteBudget = 16
+	client := mustClient(t, cfg)
+	if _, _, err := client.DoRaw(context.Background(), RawRequest{Method: "GET", Path: "/api/v0/repos"}, ""); !errors.Is(err, ErrOverBudget) {
+		t.Fatalf("DoRaw() error = %v, want ErrOverBudget", err)
 	}
 }

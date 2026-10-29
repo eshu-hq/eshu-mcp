@@ -68,7 +68,12 @@ func (s *stubCore) handler(w http.ResponseWriter, r *http.Request) {
 
 func testServer(core *stubCore, tools []registry.ToolDefinition, opts ...ServerOption) (*Server, func()) {
 	coreSrv := httptest.NewServer(http.HandlerFunc(core.handler))
-	client := readcontract.NewClient(readcontract.DefaultConfig(coreSrv.URL, ""))
+	client, err := readcontract.NewClient(readcontract.DefaultConfig(coreSrv.URL, ""))
+	if err != nil {
+		// Unreachable: httptest always serves a non-empty URL, which is
+		// the only input NewClient rejects.
+		panic(err)
+	}
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 	dispatchFunc := func(ctx context.Context, name string, args map[string]any, authHeader string) (any, error) {
 		result, err := dispatch.Dispatch(ctx, client, name, args, authHeader, quiet, dispatch.DefaultOptions())

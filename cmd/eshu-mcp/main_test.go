@@ -8,9 +8,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/eshu-hq/eshu-mcp/internal/readcontract"
 	"github.com/eshu-hq/eshu-mcp/internal/resultshape"
 	"github.com/eshu-hq/eshu-mcp/internal/router"
 )
+
+// testClient builds the core client buildServer takes, or fails the test.
+func testClient(t *testing.T) *readcontract.Client {
+	t.Helper()
+	client, err := readcontract.NewClient(readcontract.DefaultConfig("https://core:8443", ""))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	return client
+}
 
 func quietLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -94,7 +105,7 @@ func TestIsTruthy(t *testing.T) {
 }
 
 func TestBuildServerWiring(t *testing.T) {
-	server, extra, summary := buildServer(quietLogger(), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "")
+	server, extra, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "")
 	if summary.surface != router.SurfaceFull {
 		t.Errorf("surface = %q, want the full default", summary.surface)
 	}
@@ -121,7 +132,7 @@ func TestBuildServerWiring(t *testing.T) {
 }
 
 func TestBuildServerProductionProfile(t *testing.T) {
-	_, _, summary := buildServer(quietLogger(), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "production")
+	_, _, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "production")
 	if summary.advertised != 169-4 {
 		t.Errorf("production advertised = %d, want 169 minus the 4 hidden tools", summary.advertised)
 	}

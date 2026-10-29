@@ -81,12 +81,22 @@ func run(args []string, logOut *slog.Logger) error {
 		return fmt.Errorf("eshu-mcp: tool surface %q serves find_tool, but no find_tool ranker is built yet (ranker increment under #9498)", surface)
 	}
 
+	// Fail fast when the embedded registry did not load: serving health
+	// with an empty contract and zero tools would be a false-green signal.
+	if err := eshuregistry.LoadError(); err != nil {
+		return fmt.Errorf("eshu-mcp: registry load failed: %w", err)
+	}
+
 	if allowUnauthenticated {
 		logOut.Warn("ESHU_MCP_ALLOW_UNAUTHENTICATED=true: MCP HTTP transport starting without edge credential check. " +
 			"Every dispatch still forwards the caller credential to core for admission. Dev/loopback use only; " +
 			"never expose this port publicly with the escape hatch set.")
 	}
-	server, extra, summary := buildServer(logOut, *coreBaseURL, apiKey, surface, shape, profile)
+	client, err := readcontract.NewClient(readcontract.DefaultConfig(*coreBaseURL, ""))
+	if err != nil {
+		return fmt.Errorf("eshu-mcp: invalid core client config: %w", err)
+	}
+	server, extra, summary := buildServer(logOut, client, *coreBaseURL, apiKey, surface, shape, profile)
 	logOut.Info("eshu-mcp serving",
 		"contract", eshuregistry.ContractVersion(),
 		"tools", summary.advertised,
@@ -108,7 +118,9 @@ type serverSummary struct {
 // buildServer wires the registry, dispatch boundary, transport, and auth
 // without binding a listener, so tests can prove the wiring serves the
 // pinned surface. It fails closed on a router surface without a ranker.
-func buildServer(logOut *slog.Logger, coreBaseURL, apiKey string, surface router.Surface, shape resultshape.Mode, profile string) (*mcpserver.Server, *http.ServeMux, serverSummary) {
+// The core client arrives built: run() rejects an invalid config before
+// any listener starts.
+func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, apiKey string, surface router.Surface, shape resultshape.Mode, profile string) (*mcpserver.Server, *http.ServeMux, serverSummary) {
 	tools := eshuregistry.Definitions()
 	if mcpserver.IsProductionProfile(profile) {
 		hidden := eshuregistry.ProductionHidden()
@@ -121,7 +133,6 @@ func buildServer(logOut *slog.Logger, coreBaseURL, apiKey string, surface router
 		tools = kept
 	}
 
-	client := readcontract.NewClient(readcontract.DefaultConfig(coreBaseURL, ""))
 	dispatchFunc := func(ctx context.Context, name string, args map[string]any, authHeader string) (any, error) {
 		result, err := dispatch.Dispatch(ctx, client, name, args, authHeader, logOut, dispatch.DefaultOptions())
 		if err != nil {

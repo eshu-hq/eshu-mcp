@@ -46,6 +46,14 @@ func load() (contract, error) {
 	return loaded, loadErr
 }
 
+// LoadError reports the embedded registry load failure, if any. The binary
+// fails fast on it at startup, so health can never answer 200 with an empty
+// contract and zero tools.
+func LoadError() error {
+	_, err := load()
+	return err
+}
+
 // ContractVersion reports the pinned tool-contract version (v1).
 func ContractVersion() string {
 	c, err := load()

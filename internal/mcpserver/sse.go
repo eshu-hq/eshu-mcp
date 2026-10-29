@@ -10,6 +10,8 @@ package mcpserver
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -79,6 +81,17 @@ func (sess *sseSession) shutdown() {
 	close(sess.ch)
 }
 
+// newSessionID mints an unguessable SSE session id. The id gates which
+// stream a credential's POST lands on, so wall-clock values would let any
+// credentialed caller enumerate another principal's session.
+func newSessionID() (string, error) {
+	var entropy [16]byte
+	if _, err := rand.Read(entropy[:]); err != nil {
+		return "", fmt.Errorf("mcp: mint session id: %w", err)
+	}
+	return "sess_" + hex.EncodeToString(entropy[:]), nil
+}
+
 // handleSSE establishes an SSE connection. It sends an `endpoint` event
 // telling the client where to POST JSON-RPC messages, then streams keepalive
 // events and any responses for the session.
@@ -107,7 +120,15 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 	// Create a session for this SSE connection, binding it to the credential
 	// that opened it (empty when transport auth is not configured).
-	sessionID := fmt.Sprintf("sess_%d", time.Now().UnixNano())
+	sessionID, err := newSessionID()
+	if err != nil {
+		s.logger.Error("sse session id minting failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, jsonrpcResponse{
+			JSONRPC: "2.0",
+			Error:   &jsonrpcError{Code: -32603, Message: "internal error"},
+		})
+		return
+	}
 	sess := &sseSession{ch: make(chan []byte, 64), principal: principalKey(r.Context()), surface: surface, shape: shape}
 
 	s.sessMu.Lock()

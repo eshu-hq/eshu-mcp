@@ -10,8 +10,6 @@ import (
 	"strings"
 )
 
-// Text summaries are a convenience layer for human readers only.
-
 // Text summaries are a convenience layer for human readers only. The structured
 // content and the embedded resource block remain the canonical source of truth.
 // Every summary built here MUST be deterministic given its input and MUST stay
