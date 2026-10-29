@@ -2,10 +2,8 @@
 # commands the workflow runs. Coverage artifacts and SARIF upload stay in
 # CI; use `go tool cover` locally for the same numbers.
 #
-# Empty-repo stage: there is no go.mod yet, so every Go target self-skips
-# with a clear message instead of failing. The skips disappear when the
-# first Go module lands (no Makefile change needed). golangci-lint must be
-# v2.12.2, the version Eshu uses and CI installs.
+# The first go.mod has landed, so every Go target below runs for real.
+# golangci-lint must be v2.12.2, the version Eshu uses and CI installs.
 GOLANGCI_LINT := golangci-lint
 
 .PHONY: ci vet lint fmt tidy cap build test race

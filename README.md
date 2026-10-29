@@ -33,6 +33,12 @@ imports them first. See
   [parity](docs/parity.md).
 - `docs/provenance.md`: source commit, file mapping, and hashes.
 - `docs/parity.md`: parity method and seed-time results.
+- `docs/skeleton.md`: the walking-skeleton server, its proof, and what stays
+  unchecked.
+- `registry.go` (module root): the served registry, embedded from the
+  tool-contract surface.
+- `internal/readcontract/`: the versioned HTTP read-contract client seam.
+- `cmd/eshu-mcp/`: the binary; today it exposes `GET /healthz` only.
 
 ## Checks
 

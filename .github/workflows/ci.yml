@@ -4,15 +4,10 @@
 # paths can affect; push-to-main and a manual workflow_dispatch run record
 # every lane; the weekly schedule runs govulncheck and gosec only.
 #
-# Empty-repo stage: there is no go.mod, no Go source, no Dockerfile, and no
-# shell script yet. Go lanes (lint, test, race, govulncheck, gosec) and the
-# image lane still merge as configured paths but self-skip with a clear
-# message until their inputs land, so the first code PR is already gated.
-# The contract-parity workflow stays separate until the reusable-workflow
-# move (issue #10).
-#
-# When the first go.mod lands, switch every setup-go step to
-# `go-version-file: go.mod` and measure the coverage baseline (issue #11).
+# The first Go module has landed, so every setup-go step reads
+# `go-version-file: go.mod` and the Go lanes plus the image lane run for
+# real. The contract-parity workflow stays separate until the
+# reusable-workflow move (issue #10).
 name: ci
 
 on:
@@ -29,11 +24,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # No Go code exists, so no baseline can be measured yet. Starts at 0 and
-  # may only rise: the first Go package measures the baseline here and
-  # ratchets it toward 90 (issue #11). Never lower it.
-  COVERAGE_FLOOR: 0
-  GO_VERSION: "1.26.10"
+  # First measured baseline: the walking-skeleton packages cover 80.3% of
+  # statements (`go test -race -covermode=atomic`, 2026-10-29). The floor
+  # may only rise toward 90 as tests land (issue #11). Never lower it.
+  COVERAGE_FLOOR: 80.3
   GOLANGCI_VERSION: v2.12.2
   GOSEC_VERSION: v2.30.0
   GOVULNCHECK_VERSION: v1.9.0
@@ -120,7 +114,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
       - id: preflight
         run: |
           if [ -f go.mod ]; then
@@ -157,7 +151,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
       - id: preflight
         run: |
           if [ -f go.mod ]; then
@@ -182,7 +176,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
       - id: preflight
         run: |
           if [ -f go.mod ]; then
@@ -261,7 +255,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
       - id: preflight
         run: |
           if [ -f go.mod ]; then
@@ -291,7 +285,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
       - id: preflight
         run: |
           if [ -f go.mod ]; then

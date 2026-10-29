@@ -8,11 +8,9 @@ the 500-line `.go` file cap, `go build`, the full test suite, and the
 race suite. Run it before every push. It needs Go 1.26.10 or newer and
 golangci-lint v2.12.2 (the version Eshu uses and CI installs).
 
-Until the first `go.mod` lands, every Go target self-skips with a clear
-message instead of failing; the skips disappear with the first module, no
-Makefile change needed. When that module lands, switch every `setup-go`
-step in `ci.yml` from the fixed `GO_VERSION` to `go-version-file: go.mod`
-and measure the coverage baseline (issues #3, #11).
+The first `go.mod` has landed, so every Go target runs for real and every
+`setup-go` step in `ci.yml` reads `go-version-file: go.mod`. The coverage
+baseline is measured at that floor (issues #3, #11).
 
 Shell scripts pass `shellcheck` (see the `shell` lane). The contract
 surface keeps its own gate: `python3 scripts/check-parity.py` (see the
