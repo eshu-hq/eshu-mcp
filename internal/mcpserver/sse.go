@@ -168,6 +168,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// Send the endpoint event per MCP SSE spec.
 	// The client uses this URL to POST JSON-RPC requests.
 	endpoint := sseEndpointURL(sessionID, surface, shape)
+	// #nosec G705 -- the sink is an SSE text/event-stream data frame, never HTML-interpreted, and every interpolated value is QueryEscape percent-encoded (outside [A-Za-z0-9-_.~], including <>"'&) from a server-minted hex session id plus validated surface/shape enums, so no markup can reach the sink.
 	if _, err := fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", endpoint); err != nil {
 		return
 	}
