@@ -92,6 +92,24 @@ func newSessionID() (string, error) {
 	return "sess_" + hex.EncodeToString(entropy[:]), nil
 }
 
+// sseEndpointURL builds the `endpoint` event URL that tells an SSE client
+// where to POST JSON-RPC messages. A chosen surface rides in the URL so
+// every POST the client follows carries it. Each value is query-escaped:
+// the session id is server-minted and surface/shape are validated enums,
+// and escaping keeps that invariant even if a value ever widens. The
+// parameter order matches the pre-extraction server exactly
+// (sessionId, surface, shape); TestSSEEndpointURLPinsParameterOrder pins it.
+func sseEndpointURL(sessionID string, surface router.Surface, shape resultshape.Mode) string {
+	endpoint := "/mcp/message?sessionId=" + url.QueryEscape(sessionID)
+	if surface != "" {
+		endpoint += "&surface=" + url.QueryEscape(string(surface))
+	}
+	if shape != "" {
+		endpoint += "&shape=" + url.QueryEscape(string(shape))
+	}
+	return endpoint
+}
+
 // handleSSE establishes an SSE connection. It sends an `endpoint` event
 // telling the client where to POST JSON-RPC messages, then streams keepalive
 // events and any responses for the session.
@@ -149,18 +167,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 
 	// Send the endpoint event per MCP SSE spec.
 	// The client uses this URL to POST JSON-RPC requests.
-	// A chosen surface rides in the endpoint URL so every POST the client
-	// follows carries it. Each value is query-escaped: the session id is
-	// server-minted and surface/shape are validated enums, and escaping
-	// keeps that invariant even if a value ever widens. The parameter order
-	// matches the pre-extraction server exactly.
-	endpoint := "/mcp/message?sessionId=" + url.QueryEscape(sessionID)
-	if surface != "" {
-		endpoint += "&surface=" + url.QueryEscape(string(surface))
-	}
-	if shape != "" {
-		endpoint += "&shape=" + url.QueryEscape(string(shape))
-	}
+	endpoint := sseEndpointURL(sessionID, surface, shape)
 	if _, err := fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", endpoint); err != nil {
 		return
 	}

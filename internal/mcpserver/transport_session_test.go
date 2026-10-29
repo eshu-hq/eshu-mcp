@@ -13,7 +13,37 @@ import (
 	"time"
 
 	registry "github.com/eshu-hq/eshu-mcp"
+	"github.com/eshu-hq/eshu-mcp/internal/resultshape"
+	"github.com/eshu-hq/eshu-mcp/internal/router"
 )
+
+// TestSSEEndpointURLPinsParameterOrder pins the exact `endpoint` event URL,
+// including the pre-extraction parameter order sessionId, surface, shape.
+// It runs socket-free against the pure constructor so a reorder (e.g. the
+// alphabetical order url.Values.Encode would emit) fails by construction.
+func TestSSEEndpointURLPinsParameterOrder(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		surface router.Surface
+		shape   resultshape.Mode
+		want    string
+	}{
+		{"neither", "", "", "/mcp/message?sessionId=abc123"},
+		{"surface only", router.SurfaceRouter, "", "/mcp/message?sessionId=abc123&surface=router"},
+		{"shape only", "", resultshape.Structured, "/mcp/message?sessionId=abc123&shape=structured"},
+		{"both", router.SurfaceRouter, resultshape.Structured, "/mcp/message?sessionId=abc123&surface=router&shape=structured"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := sseEndpointURL("abc123", tc.surface, tc.shape); got != tc.want {
+				t.Errorf("sseEndpointURL = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 // TestSSESessionRoundTrip proves session establishment, SSE-linked 202, and
 // the principal-mismatch 403.
