@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -128,14 +129,18 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// Send the endpoint event per MCP SSE spec.
 	// The client uses this URL to POST JSON-RPC requests.
 	// A chosen surface rides in the endpoint URL so every POST the client
-	// follows carries it; ParseSurface canonicalizes it, so it is URL-safe.
-	endpoint := "/mcp/message?sessionId=" + sessionID
+	// follows carries it. The query is canonically encoded: the session id
+	// is server-minted and surface/shape are validated enums, and encoding
+	// keeps that invariant even if a value ever widens.
+	params := url.Values{}
+	params.Set("sessionId", sessionID)
 	if surface != "" {
-		endpoint += "&surface=" + string(surface)
+		params.Set("surface", string(surface))
 	}
 	if shape != "" {
-		endpoint += "&shape=" + string(shape) // closed enum from resultshape.Parse, URL-safe
+		params.Set("shape", string(shape))
 	}
+	endpoint := "/mcp/message?" + params.Encode()
 	if _, err := fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", endpoint); err != nil {
 		return
 	}

@@ -168,7 +168,9 @@ func (s *Server) RunHTTP(ctx context.Context, addr string, extra *http.ServeMux)
 
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// WithoutCancel, not Background: the parent is already done (that is
+		// the trigger), and the shutdown still gets its own 5s bound.
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			s.logger.Error("mcp server shutdown failed", "error", err)
