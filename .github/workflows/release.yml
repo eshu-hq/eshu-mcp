@@ -226,7 +226,7 @@ jobs:
       - name: Cut GitHub Release with SBOM
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          files: dist/eshu-mcp-image.spdx.json
+          files: dist/eshu-mcp-image-spdx.json
           generate_release_notes: true
           body: |
             Image: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.push.outputs.digest }}`
