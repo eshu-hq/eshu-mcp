@@ -26,17 +26,21 @@ def main():
     doc = json.loads(tools_path.read_text())
     order = doc["registry"]["tool_order"]
     check(doc["contract_version"] == "v1", "contract version is v1")
-    check(doc["registry"]["tool_count"] == 168, "registry count is 168")
-    check(len(order) == 168, "tool_order has 168 entries")
+    check(doc["registry"]["tool_count"] == 169, "registry count is 169")
+    check(len(order) == 169, "tool_order has 169 entries")
     check(len(set(order)) == len(order), "tool names are unique")
     check(order[0] == "find_code", "first tool is find_code")
     check(
-        order[-1] == "list_runtime_version_declarations",
-        "last tool is list_runtime_version_declarations",
+        order[-1] == "search_dockerfile_installs",
+        "last tool is search_dockerfile_installs (#9303 reseed)",
     )
     check(
-        doc["source"]["census_count_constant"] == 168,
-        "census count constant is 168",
+        doc["source"]["census_count_constant"] == 169,
+        "census count constant is 169",
+    )
+    check(
+        doc["source"]["commit"] == "9922b492d8a3a25ef87b39d38864b36ff522a6ce",
+        "source commit is origin/main 9922b49",
     )
     check(
         doc["envelope"]["mime_type"] == "application/eshu.envelope+json",
@@ -64,8 +68,8 @@ def main():
     )
     check(
         digest
-        == "71b005ee7305ca0768f38694ac6de237901d963df75d4077dd57e189bfadc89f",
-        "verbatim ownership map matches seed-time hash",
+        == "1daf8a6d7637981a8db8d08485fad77561c4749bbd794d3c9671d79bfe7a85df",
+        "verbatim ownership map matches reseed-time hash (9922b49)",
     )
 
     if FAILURES:

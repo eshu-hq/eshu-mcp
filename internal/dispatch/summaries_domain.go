@@ -1,0 +1,298 @@
+// Ported from go/internal/mcp/summaries.go and summaries_families.go at 9922b49.
+// query.* value helpers are local ports (see values.go); the map-only
+// answer-metadata branch is kept because dispatch only ever sees JSON-decoded
+// maps. See docs/parity.md.
+
+package dispatch
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Domain summarizers: service, incident, citation, index/host status,
+// and code relationships.
+
+func summarizeServiceStory(data map[string]any) string {
+	if data == nil {
+		return ""
+	}
+	identity := mcpMapField(data, "service_identity")
+	apiSurface := mcpMapField(data, "api_surface")
+	limits := mcpMapField(data, "result_limits")
+	metadata := mcpAnswerMetadata(data)
+
+	name := stringVal(identity, "service_name")
+	if name == "" {
+		name = stringVal(identity, "service_id")
+	}
+	if name == "" {
+		name = "service"
+	}
+
+	parts := []string{clampField(name)}
+
+	endpointCount := intVal(apiSurface, "endpoint_count")
+	apiPart := fmt.Sprintf("API surface %d", endpointCount)
+	if boolVal(apiSurface, "truncated") || mcpMetadataTruncated(metadata) {
+		apiPart += " (truncated)"
+	}
+	parts = append(parts, apiPart)
+
+	parts = append(parts, fmt.Sprintf("deps %d", intVal(limits, "upstream_count")))
+	parts = append(parts, fmt.Sprintf("consumers %d", intVal(limits, "downstream_count")))
+
+	summary := strings.Join(parts, "; ")
+
+	if limitation, count := mcpFirstMetadataReason(metadata, "limitations"); limitation != "" {
+		summary += "; top limitation: " + clampField(limitation)
+		if count > 1 {
+			summary += fmt.Sprintf(" (+%d more)", count-1)
+		}
+	} else if limitations := stringSliceVal(identity, "limitations"); len(limitations) > 0 {
+		summary += "; top limitation: " + clampField(limitations[0])
+		if len(limitations) > 1 {
+			summary += fmt.Sprintf(" (+%d more)", len(limitations)-1)
+		}
+	}
+	return summary
+}
+
+// summarizeServiceInvestigation renders a bounded investigation summary: finding
+// count + truncation, coverage state, and the single recommended next call.
+func summarizeServiceInvestigation(data map[string]any) string {
+	if data == nil {
+		return ""
+	}
+	name := stringVal(data, "service_name")
+	if name == "" {
+		name = "service"
+	}
+	findingCount := mcpSliceLen(data, "investigation_findings")
+	coverage := mcpMapField(data, "coverage_summary")
+
+	summary := fmt.Sprintf("%s — %d finding(s)", clampField(name), findingCount)
+	if boolVal(coverage, "truncated") {
+		summary += " (truncated)"
+	}
+	if state := stringVal(coverage, "state"); state != "" {
+		summary += "; coverage " + state
+	}
+	if next := mcpFirstStringInSlice(data, "recommended_next_calls", "tool"); next != "" {
+		summary += "; next: " + clampField(next)
+	}
+	return summary
+}
+
+// summarizeIncidentContext renders a bounded incident-context summary: incident
+// title, related-change count, missing/ambiguous evidence counts, and the
+// truncation marker. Missing and ambiguous counts are surfaced so a partial
+// incident packet never reads as a clean success.
+func summarizeIncidentContext(data map[string]any) string {
+	if data == nil {
+		return ""
+	}
+	incident := mcpMapField(data, "incident")
+	title := stringVal(incident, "title")
+	if title == "" {
+		title = stringVal(incident, "provider_incident_id")
+	}
+	if title == "" {
+		title = "incident"
+	}
+
+	relatedChanges := mcpSliceLen(data, "related_changes")
+	missing := mcpSliceLen(data, "missing_evidence")
+	ambiguous := mcpSliceLen(data, "ambiguous_evidence")
+	metadata := mcpAnswerMetadata(data)
+	if metadataMissing := mcpMetadataRowsLen(metadata, "missing_evidence"); metadataMissing > 0 {
+		missing = metadataMissing
+	}
+
+	summary := fmt.Sprintf("%s — %d related change(s)", clampField(title), relatedChanges)
+	summary += fmt.Sprintf("; missing evidence %d", missing)
+	summary += fmt.Sprintf("; ambiguous %d", ambiguous)
+	if boolVal(data, "truncated") || mcpMetadataTruncated(metadata) {
+		summary += "; truncated"
+	}
+	return summary
+}
+
+// summarizeCitationPacket renders a bounded evidence-citation summary: resolved
+// vs requested handle counts, missing count, and the truncation marker.
+func summarizeCitationPacket(data map[string]any) string {
+	if data == nil {
+		return ""
+	}
+	coverage := mcpMapField(data, "coverage")
+	if coverage == nil {
+		return ""
+	}
+	resolved := intVal(coverage, "resolved_count")
+	missing := intVal(coverage, "missing_count")
+	requested := intVal(coverage, "input_handle_count")
+
+	summary := fmt.Sprintf("coverage: resolved %d/requested %d; missing %d", resolved, requested, missing)
+	if boolVal(coverage, "truncated") {
+		summary += " (truncated)"
+	}
+	return summary
+}
+
+// summarizeIndexStatus renders an actionable index/readiness summary: the health
+// state and the leading reason, rather than an opaque object count.
+func summarizeIndexStatus(data map[string]any) string {
+	if data == nil {
+		return ""
+	}
+	state := stringVal(data, "status")
+	if state == "" {
+		if boolVal(data, "scoped") {
+			return summarizeScopedIndexStatus(data)
+		}
+		return ""
+	}
+	summary := "index status: " + clampField(state)
+	if reasons := stringSliceVal(data, "reasons"); len(reasons) > 0 {
+		summary += " — " + clampField(reasons[0])
+		if len(reasons) > 1 {
+			summary += fmt.Sprintf(" (+%d more)", len(reasons)-1)
+		}
+	}
+	return summary
+}
+
+// summarizeScopedIndexStatus renders the scoped index-status shape (#5167): a
+// grant-bound repository count and the disclosure that the deployment-wide
+// sections were withheld, so a caller does not read the absent status as an
+// unknown health.
+func summarizeScopedIndexStatus(data map[string]any) string {
+	count := intVal(data, "repository_count")
+	noun := "repositories"
+	if count == 1 {
+		noun = "repository"
+	}
+	return fmt.Sprintf(
+		"index status (scoped): %d %s in your grant; deployment-wide health, queue, and coordinator sections are withheld",
+		count, noun,
+	)
+}
+
+// summarizeHostedReadiness renders the hosted readiness result and first
+// blocking class so MCP clients do not need to inspect the full check list.
+func summarizeHostedReadiness(data map[string]any) string {
+	if data == nil {
+		return ""
+	}
+	state := stringVal(data, "state")
+	if state == "" {
+		return ""
+	}
+	summary := "hosted readiness: " + clampField(state)
+	if failures := stringSliceVal(data, "failure_classes"); len(failures) > 0 {
+		summary += " — " + clampField(failures[0])
+		if len(failures) > 1 {
+			summary += fmt.Sprintf(" (+%d more)", len(failures)-1)
+		}
+	}
+	return summary
+}
+
+// summarizeIngesterStatus renders an actionable ingester readiness summary: the
+// ingester name, its health state, and the leading health reason.
+func summarizeIngesterStatus(data map[string]any) string {
+	if data == nil {
+		return ""
+	}
+	name := stringVal(data, "ingester")
+	if name == "" {
+		return ""
+	}
+	health := mcpMapField(data, "health")
+	state := stringVal(health, "state")
+	if state == "" {
+		state = "unknown"
+	}
+	summary := fmt.Sprintf("ingester %s: %s", clampField(name), clampField(state))
+	if reasons := stringSliceVal(health, "reasons"); len(reasons) > 0 {
+		summary += " — " + clampField(reasons[0])
+		if len(reasons) > 1 {
+			summary += fmt.Sprintf(" (+%d more)", len(reasons)-1)
+		}
+	}
+	return summary
+}
+
+// summarizeIngesterList renders a bounded ingester-list summary: how many
+// ingesters are registered.
+func summarizeIngesterList(data map[string]any) string {
+	if data == nil {
+		return ""
+	}
+	if _, ok := data["ingesters"]; !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d ingester(s) registered", mcpSliceLen(data, "ingesters"))
+}
+
+// summarizeCollectorList renders a bounded collector-list summary: how many
+// collectors are registered.
+func summarizeCollectorList(data map[string]any) string {
+	if data == nil {
+		return ""
+	}
+	if _, ok := data["collectors"]; !ok {
+		return ""
+	}
+	return fmt.Sprintf("%d collector(s) registered", mcpSliceLen(data, "collectors"))
+}
+
+// summarizeCodeRelationships renders a bounded relationship-story summary that
+// makes code-relationship uncertainty explicit (issue #3158): how many edges are
+// derived (canonical code truth) versus heuristic/ambiguous or unsupported, and
+// why the result is empty or short. It reads the structured content only and
+// never reinterprets confidence or truth — it surfaces what the answer already
+// labels per edge so a reader sees the ambiguity instead of trusting raw counts.
+func summarizeCodeRelationships(data map[string]any) string {
+	if data == nil {
+		return ""
+	}
+	relationships, ok := data["relationships"].([]any)
+	if !ok {
+		return ""
+	}
+	var derived, heuristic, unsupported int
+	for _, raw := range relationships {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			row = nil
+		}
+		provenance := mcpMapField(row, "provenance")
+		switch stringVal(provenance, "truth_state") {
+		case "derived":
+			derived++
+		case "heuristic":
+			heuristic++
+		default:
+			unsupported++
+		}
+	}
+
+	parts := []string{fmt.Sprintf("%d relationship(s): %d derived, %d heuristic/ambiguous, %d unsupported",
+		len(relationships), derived, heuristic, unsupported)}
+	if heuristic > 0 {
+		parts = append(parts, "heuristic edges are correlation evidence, not canonical code truth")
+	}
+	if unsupported > 0 {
+		parts = append(parts, "unsupported edges carry no recorded confidence")
+	}
+
+	coverage := mcpMapField(data, "coverage")
+	if explanation := stringVal(coverage, "evidence_explanation"); explanation != "" {
+		reason := stringVal(coverage, "missing_edge_reason")
+		if reason != "" && reason != "complete" {
+			parts = append(parts, fmt.Sprintf("%s: %s", reason, explanation))
+		}
+	}
+	return strings.Join(parts, "; ")
+}
