@@ -1,0 +1,205 @@
+# eshu-mcp release (Refs eshu-hq/eshu#9521, part of eshu-hq/eshu#6707).
+#
+# Tags `v*` publish `ghcr.io/eshu-hq/eshu-mcp` images with SLSA provenance,
+# an SPDX SBOM, SBOM attestation, and a Trivy vulnerability gate, then cut
+# a GitHub Release carrying the SBOM. PRs never push: the `image` lane in
+# ci.yml proves the Dockerfile still builds, and this workflow only pushes
+# on tag events. A manual dispatch builds without pushing to prove the
+# workflow itself still works.
+#
+# The Dockerfile VERSION arg stamps the tag into the binary with
+# `-ldflags "-X main.version=..."`, so the initialize handshake reports the
+# release instead of `dev` (see TestBuildServerReportsBuildVersion).
+#
+# Pinned actions (re-verify with git ls-remote when auditing; Dependabot
+# github-actions proposes bumps, weekly grouped):
+#   actions/checkout v7.0.1              3d3c42e5aac5ba805825da76410c181273ba90b1
+#   docker/setup-buildx-action v3        8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+#   docker/login-action v3               c94ce9fb468520275223c154b00df6fe4bcc9
+#   docker/metadata-action v5            c299e40c65443455700f0fdfc63efafe5b349051
+#   docker/build-push-action v6          10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+#   actions/attest-build-provenance v2   96b4a1ef7235a096b17240c259729fdd70c83d45
+#   actions/attest v4                    1e69f48acb82d1966a394da916b4c1698aa569d6
+#   anchore/sbom-action v0               e22c389904149dbc22b58101806040fa8d37a610
+#   aquasecurity/trivy-action 0.33.1     b6643a29fecd7f34b3597bc6acb0a98b03d33ff8
+#   softprops/action-gh-release v2       3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Log in to Container Registry
+        if: github.ref_type == 'tag'
+        uses: docker/login-action@c94ce9fb468520275223c154b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix=sha-,format=long
+      - name: Validate version stamp
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+        run: |
+          # The Dockerfile interpolates VERSION into a shell-form RUN for
+          # ldflags, so refuse anything but tag/sha characters before the
+          # build can interpret them.
+          if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9._-]+$'; then
+            echo "refusing unsafe VERSION stamp: $VERSION" >&2
+            exit 1
+          fi
+      - name: Compute source date epoch
+        id: epoch
+        run: echo "epoch=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
+      - name: Pin deterministic labels
+        id: labels
+        run: |
+          CREATED="$(date -u -d "@${{ steps.epoch.outputs.epoch }}" '+%Y-%m-%dT%H:%M:%SZ')"
+          printf '%s\n' '${{ steps.meta.outputs.labels }}' > /tmp/labels.txt
+          sed -i "s|org\\.opencontainers\\.image\\.created=.*|org.opencontainers.image.created=${CREATED}|" /tmp/labels.txt
+          { echo 'labels<<EOF'; cat /tmp/labels.txt; echo 'EOF'; } >> "${GITHUB_OUTPUT}"
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.ref_type == 'tag' }}
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+            SOURCE_DATE_EPOCH=${{ steps.epoch.outputs.epoch }}
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.labels.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: ${{ github.ref_type == 'tag' && env.IMAGE_PLATFORMS || 'linux/amd64' }}
+      - name: Generate artifact attestation
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Prepare SBOM output
+        if: github.ref_type == 'tag'
+        run: mkdir -p dist
+      - name: Generate image SBOM
+        if: github.ref_type == 'tag'
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: dist/eshu-mcp-image.spdx.json
+          artifact-name: eshu-mcp-image-spdx.json
+          upload-artifact: true
+          upload-release-assets: false
+      - name: Generate SBOM attestation
+        if: github.ref_type == 'tag'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          predicate: dist/eshu-mcp-image.spdx.json
+          predicate-type: https://spdx.dev/Document/v2.3
+          push-to-registry: true
+      - name: Verify image attestations
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OCI_IMAGE_REF: oci://${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        run: |
+          gh attestation verify "${OCI_IMAGE_REF}" -R "${GITHUB_REPOSITORY}"
+          gh attestation verify "${OCI_IMAGE_REF}" -R "${GITHUB_REPOSITORY}" \
+            --predicate-type https://spdx.dev/Document/v2.3
+
+  trivy:
+    needs: [build-and-push]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - name: Scan image for HIGH/CRITICAL CVEs
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # 0.33.1
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+      - name: Upload Trivy SARIF on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-results.sarif
+          path: trivy-results.sarif
+          retention-days: 14
+          if-no-files-found: error
+
+  github-release:
+    needs: [build-and-push, trivy]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: eshu-mcp-image-spdx.json
+          path: dist
+      - name: Cut GitHub Release with SBOM
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: dist/eshu-mcp-image.spdx.json
+          generate_release_notes: true
+          body: |
+            Image: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-and-push.outputs.digest }}`
+            Provenance and SBOM attestations are attached to the image in GHCR.
+            Scan: Trivy HIGH/CRITICAL gate passed on this digest.

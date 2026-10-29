@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -135,5 +136,41 @@ func TestBuildServerProductionProfile(t *testing.T) {
 	_, _, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "production")
 	if summary.advertised != 169-4 {
 		t.Errorf("production advertised = %d, want 169 minus the 4 hidden tools", summary.advertised)
+	}
+}
+
+// TestBuildServerReportsBuildVersion pins the release contract: the build
+// version baked with -ldflags "-X main.version=..." (the Dockerfile VERSION
+// arg the release workflow sets) is the version the initialize handshake
+// advertises. A release that reports "dev" was not stamped.
+func TestBuildServerReportsBuildVersion(t *testing.T) {
+	const stamped = "v0.0.0-9521-test"
+	previous := version
+	version = stamped
+	defer func() { version = previous }()
+
+	server, extra, _ := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "")
+	req := httptest.NewRequest(http.MethodPost, "/mcp/message",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`))
+	req.Header.Set("Authorization", "Bearer deploy-key")
+	rec := httptest.NewRecorder()
+	server.Handler(extra).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /mcp/message initialize = %d, want 200", rec.Code)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode initialize response: %v", err)
+	}
+	result, ok := decoded["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("initialize response has no result: %v", decoded)
+	}
+	info, ok := result["serverInfo"].(map[string]any)
+	if !ok {
+		t.Fatalf("initialize result has no serverInfo: %v", result)
+	}
+	if info["version"] != stamped {
+		t.Errorf("serverInfo.version = %v, want the stamped build %q", info["version"], stamped)
 	}
 }

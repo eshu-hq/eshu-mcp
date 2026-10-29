@@ -28,6 +28,7 @@ Job names are frozen because branch protection requires `ci-complete`:
 | `race` | Go sources, module, lint-config, or workflow changes, plus unclassified files, plus a coverage artifact and floor check |
 | `shell` | Shell script changes |
 | `image` | `Dockerfile` / `.dockerignore` changes (build only, no push); skipped until one lands |
+| Tag `v*` | `release`: multi-arch push to `ghcr.io/eshu-hq/eshu-mcp` with provenance, SBOM, Trivy gate, GitHub Release (see `docs/release.md`) |
 | `govulncheck` | Dependency changes, pushes to `main`, weekly schedule, manual dispatch; skipped until the first `go.mod` lands |
 | `gosec` | Pushes to `main`, weekly schedule, and manual dispatch; advisory, SARIF to the Security tab; skipped until the first `go.mod` lands |
 | `ci-complete` | Always; fails on any needed lane failure, passes on legitimate skips |

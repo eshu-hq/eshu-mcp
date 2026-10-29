@@ -2,7 +2,8 @@
 # names lint, test, race, shell, image, govulncheck, gosec, with
 # ci-complete as the only required context. A PR only pays for lanes its
 # paths can affect; push-to-main and a manual workflow_dispatch run record
-# every lane; the weekly schedule runs govulncheck and gosec only.
+# every lane; the weekly schedule runs govulncheck and gosec only. Tag v*
+# ships through .github/workflows/release.yml (Refs eshu-hq/eshu#9521).
 #
 # The first Go module has landed, so every setup-go step reads
 # `go-version-file: go.mod` and the Go lanes plus the image lane run for
