@@ -150,18 +150,17 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// Send the endpoint event per MCP SSE spec.
 	// The client uses this URL to POST JSON-RPC requests.
 	// A chosen surface rides in the endpoint URL so every POST the client
-	// follows carries it. The query is canonically encoded: the session id
-	// is server-minted and surface/shape are validated enums, and encoding
-	// keeps that invariant even if a value ever widens.
-	params := url.Values{}
-	params.Set("sessionId", sessionID)
+	// follows carries it. Each value is query-escaped: the session id is
+	// server-minted and surface/shape are validated enums, and escaping
+	// keeps that invariant even if a value ever widens. The parameter order
+	// matches the pre-extraction server exactly.
+	endpoint := "/mcp/message?sessionId=" + url.QueryEscape(sessionID)
 	if surface != "" {
-		params.Set("surface", string(surface))
+		endpoint += "&surface=" + url.QueryEscape(string(surface))
 	}
 	if shape != "" {
-		params.Set("shape", string(shape))
+		endpoint += "&shape=" + url.QueryEscape(string(shape))
 	}
-	endpoint := "/mcp/message?" + params.Encode()
 	if _, err := fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", endpoint); err != nil {
 		return
 	}
