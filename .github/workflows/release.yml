@@ -22,7 +22,7 @@
 # github-actions proposes bumps, weekly grouped):
 #   actions/checkout v7.0.1              3d3c42e5aac5ba805825da76410c181273ba90b1
 #   docker/setup-buildx-action v3        8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
-#   docker/login-action v3               c94ce9fb468520275223c154b00df6fe4bcc9
+#   docker/login-action v3               c94ce9fb468520275223c153574b00df6fe4bcc9
 #   docker/metadata-action v5            c299e40c65443455700f0fdfc63efafe5b349051
 #   docker/build-push-action v6          10e90e3645eae34f1e60eeb005ba3a3d33f178e8
 #   actions/attest-build-provenance v2   96b4a1ef7235a096b17240c259729fdd70c83d45
@@ -124,7 +124,7 @@ jobs:
           fetch-depth: 0
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Log in to Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c154b00df6fe4bcc9 # v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
