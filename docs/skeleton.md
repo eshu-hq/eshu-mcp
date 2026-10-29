@@ -45,8 +45,11 @@ independent build, test, and image steps.
 
 ## NOT_CHECKED
 
-Release cut with provenance and vulnerability scan, QA deployment from the
-destination artifact, parity re-proof against the live core path, rehearsed
-rollback, owner production acceptance, and in-tree removal. Tool dispatch,
+The release lane is wired (`release.yml`, multi-arch image, version stamp,
+provenance, scan record) but no tag has been cut from it: the first `v*`
+push, its digest, and its provenance/Trivy proof stay `NOT_CHECKED` until
+an owner cuts that tag. QA deployment from the destination artifact, parity
+re-proof against the live core path, rehearsed rollback, owner production
+acceptance, and in-tree removal stay open too. Tool dispatch,
 authentication against live core, concurrency proofs, and the arbiter's
 version-pair and shared-shape-publisher decisions all stay open under #9498.

@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -135,5 +139,104 @@ func TestBuildServerProductionProfile(t *testing.T) {
 	_, _, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "production")
 	if summary.advertised != 169-4 {
 		t.Errorf("production advertised = %d, want 169 minus the 4 hidden tools", summary.advertised)
+	}
+}
+
+// TestBuildServerReportsBuildVersion pins the release contract: the build
+// version baked with -ldflags "-X main.version=..." (the Dockerfile VERSION
+// arg the release workflow sets) is the version the initialize handshake
+// advertises. A release that reports "dev" was not stamped.
+func TestBuildServerReportsBuildVersion(t *testing.T) {
+	const stamped = "v0.0.0-9521-test"
+	previous := version
+	version = stamped
+	defer func() { version = previous }()
+
+	server, extra, _ := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "")
+	req := httptest.NewRequest(http.MethodPost, "/mcp/message",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`))
+	req.Header.Set("Authorization", "Bearer deploy-key")
+	rec := httptest.NewRecorder()
+	server.Handler(extra).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /mcp/message initialize = %d, want 200", rec.Code)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode initialize response: %v", err)
+	}
+	result, ok := decoded["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("initialize response has no result: %v", decoded)
+	}
+	info, ok := result["serverInfo"].(map[string]any)
+	if !ok {
+		t.Fatalf("initialize result has no serverInfo: %v", result)
+	}
+	if info["version"] != stamped {
+		t.Errorf("serverInfo.version = %v, want the stamped build %q", info["version"], stamped)
+	}
+}
+
+// repoRoot resolves the repository root from this test file so contract
+// guards below can read the Dockerfile and release workflow hermetically.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller(0) failed")
+	}
+	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
+}
+
+// TestReleaseStampPlumbingGuardsVersionArg pins the release-stamping link
+// the handshake test above cannot see: the Dockerfile must consume a
+// VERSION build arg into -ldflags "-X main.version=...", and release.yml
+// must pass that VERSION build-arg to the Docker build. Renaming the
+// Dockerfile ARG without updating the workflow (or dropping the build-arg)
+// silently ships "dev" binaries while TestBuildServerReportsBuildVersion
+// stays green, so this guard fails that mutant.
+func TestReleaseStampPlumbingGuardsVersionArg(t *testing.T) {
+	t.Parallel()
+
+	dockerfile, err := os.ReadFile(filepath.Join(repoRoot(t), "Dockerfile"))
+	if err != nil {
+		t.Fatalf("read Dockerfile: %v", err)
+	}
+	for _, want := range []string{"ARG VERSION=", "-X main.version=${VERSION}"} {
+		if !strings.Contains(string(dockerfile), want) {
+			t.Errorf("Dockerfile has no %q: the VERSION build-arg no longer reaches the binary", want)
+		}
+	}
+
+	workflow, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/release.yml"))
+	if err != nil {
+		t.Fatalf("read release.yml: %v", err)
+	}
+	if !strings.Contains(string(workflow), "VERSION=${{") {
+		t.Error("release.yml passes no VERSION=${{...}} build-arg: the Dockerfile stamp is unset")
+	}
+}
+
+// TestReleaseWorkflowGatesPushOnTrivyScan pins the P1 gate order: Trivy
+// must scan the local pre-push image, and the push must live in a job that
+// needs the scan job, so a failed scan leaves nothing pullable in GHCR.
+func TestReleaseWorkflowGatesPushOnTrivyScan(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/release.yml"))
+	if err != nil {
+		t.Fatalf("read release.yml: %v", err)
+	}
+	body := string(raw)
+
+	if strings.Contains(body, "image-ref: ${{ env.REGISTRY }}") {
+		t.Error("Trivy scans a registry image: the scan must run against the local pre-push image")
+	}
+	if !strings.Contains(body, "needs: [build-and-scan]") {
+		t.Error("no job needs build-and-scan: the push must wait for the Trivy gate")
+	}
+	if strings.Contains(body, "push: ${{ github.ref_type") {
+		t.Error("conditional push before the scan: the push must run only after the Trivy gate passes")
 	}
 }
