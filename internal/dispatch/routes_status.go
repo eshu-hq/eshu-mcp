@@ -1,0 +1,212 @@
+package dispatch
+
+import (
+	"fmt"
+	"net/url"
+	"strings"
+
+	"github.com/eshu-hq/eshu-mcp/internal/routecontract"
+)
+
+func statusRoute(toolName string, args map[string]any) (*routecontract.Request, bool, error) {
+	switch toolName {
+	case "list_collectors":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/collectors"}, true, nil
+	case "list_ingesters":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/ingesters"}, true, nil
+	case "get_ingester_status":
+		ingester := str(args, "ingester")
+		if ingester == "" {
+			ingester = "repository"
+		}
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/ingesters/" + url.PathEscape(ingester)}, true, nil
+	case "get_index_status":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/index-status"}, true, nil
+	case "get_hosted_readiness":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/hosted-readiness"}, true, nil
+	case "get_operator_control_plane":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/operator-control-plane"}, true, nil
+	case "list_dead_letter_work_items":
+		limit := intOr(args, "limit", 0)
+		if limit <= 0 {
+			return nil, true, fmt.Errorf("limit is required")
+		}
+		timeoutMS := intOr(args, "timeout_ms", 0)
+		if timeoutMS <= 0 {
+			return nil, true, fmt.Errorf("timeout_ms is required")
+		}
+		body := map[string]any{
+			"limit":      limit,
+			"timeout_ms": timeoutMS,
+		}
+		for _, key := range []string{
+			"failure_class",
+			"domain",
+			"scope_id",
+			"collector_kind",
+			"updated_after",
+			"updated_before",
+		} {
+			if value := strings.TrimSpace(str(args, key)); value != "" {
+				body[key] = value
+			}
+		}
+		return &routecontract.Request{Method: "POST", Path: "/api/v0/admin/dead-letters/query", Body: body}, true, nil
+	case "list_reducer_input_invalid_facts":
+		return reducerInputInvalidFactsRoute(args)
+	case "list_changed_since_poisoned_links":
+		return changedSincePoisonedLinksRoute(args)
+	case "get_freshness_causality":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/freshness-causality"}, true, nil
+	case "get_collector_readiness":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/collector-readiness"}, true, nil
+	case "get_hosted_governance_status":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/governance"}, true, nil
+	case "get_semantic_capability_status":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/semantic-extraction"}, true, nil
+	case "get_answer_narration_status":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/answer-narration"}, true, nil
+	case "get_capability_catalog":
+		query := map[string]string{
+			"limit":  intString(args, "limit", 12),
+			"offset": intString(args, "offset", 0),
+		}
+		if maturity := str(args, "maturity"); maturity != "" {
+			query["maturity"] = maturity
+		}
+		if owner := str(args, "owner"); owner != "" {
+			query["owner"] = owner
+		}
+		if view := str(args, "view"); view != "" {
+			query["view"] = view
+		}
+		if boolOr(args, "include_authorization", false) {
+			query["include_authorization"] = "true"
+		}
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/capabilities", Query: query}, true, nil
+	case "get_surface_inventory":
+		query := map[string]string{
+			"limit":  intString(args, "limit", 200),
+			"offset": intString(args, "offset", 0),
+		}
+		if category := str(args, "category"); category != "" {
+			query["category"] = category
+		}
+		if readiness := str(args, "readiness"); readiness != "" {
+			query["readiness"] = readiness
+		}
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/surface-inventory", Query: query}, true, nil
+	case "list_component_extensions":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/component-extensions", Query: map[string]string{
+			"limit": intString(args, "limit", 100),
+		}}, true, nil
+	case "get_component_extension_diagnostics":
+		componentID := strings.TrimSpace(str(args, "component_id"))
+		if componentID == "" {
+			return nil, true, fmt.Errorf("component_id is required")
+		}
+		return &routecontract.Request{
+			Method: "GET",
+			Path:   "/api/v0/component-extensions/" + url.PathEscape(componentID) + "/diagnostics",
+		}, true, nil
+	case "list_collector_extraction_readiness":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/collector-extraction-readiness", Query: map[string]string{
+			"limit": intString(args, "limit", 100),
+		}}, true, nil
+	case "get_collector_extraction_readiness":
+		family := strings.TrimSpace(str(args, "family"))
+		if family == "" {
+			return nil, true, fmt.Errorf("family is required")
+		}
+		return &routecontract.Request{
+			Method: "GET",
+			Path:   "/api/v0/collector-extraction-readiness/" + url.PathEscape(family),
+		}, true, nil
+	case "list_fact_schema_versions":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/fact-schema-versions", Query: map[string]string{
+			"limit": intString(args, "limit", 200),
+		}}, true, nil
+	case "get_fact_schema_version":
+		factKind := strings.TrimSpace(str(args, "fact_kind"))
+		if factKind == "" {
+			return nil, true, fmt.Errorf("fact_kind is required")
+		}
+		factRoute := routecontract.Request{
+			Method: "GET",
+			Path:   "/api/v0/fact-schema-versions/" + url.PathEscape(factKind),
+		}
+		if candidate := strings.TrimSpace(str(args, "candidate")); candidate != "" {
+			factRoute.Query = map[string]string{"candidate": candidate}
+		}
+		return &factRoute, true, nil
+	default:
+		return nil, false, nil
+	}
+}
+
+// reducerInputInvalidFactsRoute builds the POST /api/v0/admin/input-invalid-facts/query
+// route for list_reducer_input_invalid_facts (issue #4630), mirroring the
+// list_dead_letter_work_items case: scope_id, generation_id, limit, and
+// timeout_ms are required; domain and fact_kind are optional passthrough
+// filters. Extracted from statusRoute to keep that switch under the funlen
+// cap.
+func reducerInputInvalidFactsRoute(args map[string]any) (*routecontract.Request, bool, error) {
+	scopeID := strings.TrimSpace(str(args, "scope_id"))
+	if scopeID == "" {
+		return nil, true, fmt.Errorf("scope_id is required")
+	}
+	generationID := strings.TrimSpace(str(args, "generation_id"))
+	if generationID == "" {
+		return nil, true, fmt.Errorf("generation_id is required")
+	}
+	limit := intOr(args, "limit", 0)
+	if limit <= 0 {
+		return nil, true, fmt.Errorf("limit is required")
+	}
+	timeoutMS := intOr(args, "timeout_ms", 0)
+	if timeoutMS <= 0 {
+		return nil, true, fmt.Errorf("timeout_ms is required")
+	}
+	body := map[string]any{
+		"scope_id":      scopeID,
+		"generation_id": generationID,
+		"limit":         limit,
+		"timeout_ms":    timeoutMS,
+	}
+	for _, key := range []string{"domain", "fact_kind"} {
+		if value := strings.TrimSpace(str(args, key)); value != "" {
+			body[key] = value
+		}
+	}
+	return &routecontract.Request{Method: "POST", Path: "/api/v0/admin/input-invalid-facts/query", Body: body}, true, nil
+}
+
+// changedSincePoisonedLinksRoute builds the
+// POST /api/v0/admin/changed-since/poisoned-links/query route for
+// list_changed_since_poisoned_links (#7290): the changed-since link writer
+// (go/internal/storage/postgres/freshness/links) is a runner over its own
+// changed_since_scope_cursor ledger, not a fact_work_items queue domain, so
+// its poisoned and retrying scopes never appear in list_dead_letter_work_items
+// (#7127 ruling 8.10). limit and timeout_ms are required; status, scope_id,
+// and cursor are optional passthrough filters. Extracted from statusRoute to
+// keep that switch under the funlen cap.
+func changedSincePoisonedLinksRoute(args map[string]any) (*routecontract.Request, bool, error) {
+	limit := intOr(args, "limit", 0)
+	if limit <= 0 {
+		return nil, true, fmt.Errorf("limit is required")
+	}
+	timeoutMS := intOr(args, "timeout_ms", 0)
+	if timeoutMS <= 0 {
+		return nil, true, fmt.Errorf("timeout_ms is required")
+	}
+	body := map[string]any{
+		"limit":      limit,
+		"timeout_ms": timeoutMS,
+	}
+	for _, key := range []string{"status", "scope_id", "cursor"} {
+		if value := strings.TrimSpace(str(args, key)); value != "" {
+			body[key] = value
+		}
+	}
+	return &routecontract.Request{Method: "POST", Path: "/api/v0/admin/changed-since/poisoned-links/query", Body: body}, true, nil
+}

@@ -1,0 +1,3089 @@
+{
+  "analyze_code_relationships": [
+    {
+      "arguments": {
+        "limit": 5,
+        "query_type": "find_callers",
+        "repo_id": "$REPO",
+        "target": "sweepTarget"
+      },
+      "body": {
+        "cross_repo": false,
+        "direction": "incoming",
+        "include_transitive": false,
+        "limit": 5,
+        "max_depth": 5,
+        "offset": 0,
+        "relationship_type": "CALLS",
+        "relationship_types": null,
+        "repo_id": "$REPO",
+        "target": "sweepTarget",
+        "token_budget": 0
+      },
+      "label": "find_callers",
+      "method": "POST",
+      "path": "/api/v0/code/relationships/story"
+    },
+    {
+      "arguments": {
+        "limit": 5,
+        "query_type": "who_modifies",
+        "repo_id": "$REPO",
+        "target": "sweepTarget"
+      },
+      "body": {
+        "entity_id": "",
+        "name": "sweepTarget",
+        "query_type": "who_modifies",
+        "repo_id": "$REPO"
+      },
+      "label": "who_modifies",
+      "method": "POST",
+      "path": "/api/v0/code/relationships"
+    }
+  ],
+  "analyze_infra_relationships": [
+    {
+      "arguments": {
+        "query_type": "what_deploys",
+        "target": "sweep-seed-missing"
+      },
+      "body": {
+        "entity_id": "sweep-seed-missing",
+        "relationship_type": "what_deploys"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/infra/relationships"
+    }
+  ],
+  "analyze_pre_change_impact": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO",
+        "target": "$REPO",
+        "target_type": "repository"
+      },
+      "body": {
+        "base_ref": "",
+        "changed_paths": null,
+        "changes": null,
+        "environment": "",
+        "head_ref": "",
+        "limit": 5,
+        "max_depth": 4,
+        "module_id": "",
+        "offset": 0,
+        "repo_id": "$REPO",
+        "resource_id": "",
+        "service_name": "",
+        "target": "$REPO",
+        "target_type": "repository",
+        "topic": "",
+        "workload_id": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/pre-change"
+    }
+  ],
+  "ask": [
+    {
+      "arguments": {
+        "format": "json",
+        "question": "how many repositories are indexed?"
+      },
+      "body": {
+        "format": "json",
+        "question": "how many repositories are indexed?"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/ask"
+    }
+  ],
+  "build_evidence_citation_packet": [
+    {
+      "arguments": {
+        "handles": [
+          {
+            "kind": "file",
+            "relative_path": "README.md",
+            "repo_id": "$REPO"
+          }
+        ],
+        "limit": 5
+      },
+      "body": {
+        "handles": [
+          {
+            "kind": "file",
+            "relative_path": "README.md",
+            "repo_id": "$REPO"
+          }
+        ],
+        "limit": 5,
+        "question": "",
+        "subject": null
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/evidence/citations"
+    }
+  ],
+  "calculate_cyclomatic_complexity": [
+    {
+      "arguments": {
+        "function_name": "sweepFn",
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "function_name": "sweepFn",
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/complexity"
+    }
+  ],
+  "check_documentation_evidence_packet_freshness": [
+    {
+      "arguments": {
+        "packet_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/documentation/evidence-packets/sweep-seed-missing/freshness",
+      "query": {}
+    }
+  ],
+  "compare_code_paths": [
+    {
+      "arguments": {
+        "end": "sweepEnd",
+        "max_depth": 3,
+        "max_paths": 3,
+        "repo_id": "$REPO",
+        "start": "sweepStart"
+      },
+      "body": {
+        "end": "sweepEnd",
+        "end_entity_id": "",
+        "max_depth": 3,
+        "max_paths": 3,
+        "repo_id": "$REPO",
+        "start": "sweepStart",
+        "start_entity_id": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/call-chain/compare"
+    }
+  ],
+  "compare_environments": [
+    {
+      "arguments": {
+        "left": "prod",
+        "limit": 5,
+        "right": "stage",
+        "workload_id": "sweep-seed-missing"
+      },
+      "body": {
+        "left": "prod",
+        "limit": 5,
+        "right": "stage",
+        "workload_id": "sweep-seed-missing"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/compare/environments"
+    }
+  ],
+  "compose_replatforming_plan": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE",
+        "scope_kind": "account"
+      },
+      "body": {
+        "account_id": "",
+        "arn": "",
+        "environment": "",
+        "finding_kinds": null,
+        "limit": 5,
+        "offset": 0,
+        "region": "",
+        "repo_id": "",
+        "resource_id": "",
+        "scope_id": "$SCOPE",
+        "scope_kind": "account",
+        "service_name": "",
+        "workload_id": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/replatforming/plans"
+    }
+  ],
+  "count_ci_cd_run_correlations": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/ci-cd/run-correlations/count",
+      "query": {
+        "artifact_digest": "",
+        "commit_sha": "",
+        "environment": "",
+        "image_ref": "",
+        "outcome": "",
+        "provider": "",
+        "repository_id": "",
+        "scope_id": ""
+      }
+    }
+  ],
+  "count_container_image_identities": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/container-images/identities/count",
+      "query": {
+        "digest": "",
+        "image_ref": "",
+        "outcome": "",
+        "repository_id": "",
+        "source_repository_id": ""
+      }
+    }
+  ],
+  "count_documentation_findings": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/documentation/findings/count",
+      "query": {
+        "document_id": "",
+        "finding_type": "",
+        "freshness_state": "",
+        "scope_id": "",
+        "source_id": "",
+        "status": "",
+        "truth_level": ""
+      }
+    }
+  ],
+  "count_infra_resources": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/infra/resources/count",
+      "query": {
+        "category": "",
+        "environment": "",
+        "kind": "",
+        "provider": "",
+        "resource_category": "",
+        "resource_service": "",
+        "resource_type": ""
+      }
+    }
+  ],
+  "count_package_registry_packages": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/package-registry/packages/count",
+      "query": {
+        "ecosystem": "",
+        "namespace": "",
+        "package_manager": "",
+        "registry": "",
+        "visibility": ""
+      }
+    }
+  ],
+  "count_repositories_by_language": [
+    {
+      "arguments": {
+        "language": "go"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories/by-language",
+      "query": {
+        "language": "go",
+        "limit": "0",
+        "offset": "0"
+      }
+    }
+  ],
+  "count_sbom_attestation_attachments": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/sbom-attestations/attachments/count",
+      "query": {
+        "artifact_kind": "",
+        "attachment_status": "",
+        "document_digest": "",
+        "document_id": "",
+        "repository_id": "",
+        "service_id": "",
+        "subject_digest": "",
+        "workload_id": ""
+      }
+    }
+  ],
+  "count_secrets_iam_posture": [
+    {
+      "arguments": {
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/secrets-iam/posture-summary",
+      "query": {
+        "scope_id": "$SCOPE"
+      }
+    }
+  ],
+  "count_security_alert_reconciliations": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/security-alerts/reconciliations/count",
+      "query": {
+        "cve_id": "",
+        "ghsa_id": "",
+        "package_id": "",
+        "provider": "",
+        "provider_state": "",
+        "reconciliation_status": "",
+        "repository_id": ""
+      }
+    }
+  ],
+  "count_supply_chain_impact_findings": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/impact/findings/count",
+      "query": {
+        "advisory_id": "",
+        "cve_id": "",
+        "ecosystem": "",
+        "environment": "",
+        "ghsa_id": "",
+        "image_ref": "",
+        "impact_status": "",
+        "min_priority_score": "0",
+        "osv_id": "",
+        "package_id": "",
+        "priority_bucket": "",
+        "profile": "",
+        "repository_id": "",
+        "service_id": "",
+        "severity": "",
+        "subject_digest": "",
+        "suppression_state": "",
+        "workload_id": ""
+      }
+    }
+  ],
+  "derive_visualization_packet": [
+    {
+      "arguments": {
+        "source_response": {},
+        "view": "service_story"
+      },
+      "body": {
+        "source_response": {},
+        "source_truth": null,
+        "view": "service_story"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/visualizations/derive"
+    }
+  ],
+  "dispatch_cfg_summary": [
+    {
+      "arguments": {
+        "file_path": "main.go",
+        "repo_id": "$REPO",
+        "symbol": "main"
+      },
+      "body": {
+        "file_path": "main.go",
+        "language": "",
+        "limit": 25,
+        "line": 0,
+        "repo_id": "$REPO",
+        "symbol": "main"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/flow/cfg-summary"
+    }
+  ],
+  "dispatch_pdg_summary": [
+    {
+      "arguments": {
+        "file_path": "main.go",
+        "repo_id": "$REPO",
+        "symbol": "main"
+      },
+      "body": {
+        "file_path": "main.go",
+        "language": "",
+        "limit": 25,
+        "line": 0,
+        "repo_id": "$REPO",
+        "symbol": "main"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/flow/pdg-summary"
+    }
+  ],
+  "dispatch_reaching_def": [
+    {
+      "arguments": {
+        "file_path": "main.go",
+        "repo_id": "$REPO",
+        "symbol": "main"
+      },
+      "body": {
+        "file_path": "main.go",
+        "language": "",
+        "limit": 25,
+        "line": 0,
+        "repo_id": "$REPO",
+        "symbol": "main"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/flow/reaching-def"
+    }
+  ],
+  "dispatch_taint_path": [
+    {
+      "arguments": {
+        "file_path": "main.go",
+        "repo_id": "$REPO",
+        "symbol": "main"
+      },
+      "body": {
+        "file_path": "main.go",
+        "language": "",
+        "limit": 25,
+        "line": 0,
+        "repo_id": "$REPO",
+        "symbol": "main"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/flow/taint-path"
+    }
+  ],
+  "execute_cypher_query": [
+    {
+      "arguments": {
+        "cypher_query": "MATCH (n:Repository) RETURN n.id LIMIT 1",
+        "limit": 1
+      },
+      "body": {
+        "cypher_query": "MATCH (n:Repository) RETURN n.id LIMIT 1",
+        "limit": 1
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/cypher"
+    }
+  ],
+  "execute_language_query": [
+    {
+      "arguments": {
+        "entity_type": "repository",
+        "language": "go",
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "entity_type": "repository",
+        "language": "go",
+        "limit": 5,
+        "query": "",
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/language-query"
+    }
+  ],
+  "explain_dependency_path": [
+    {
+      "arguments": {
+        "source": "sweep-seed-missing",
+        "target": "sweep-seed-missing"
+      },
+      "body": {
+        "source": "sweep-seed-missing",
+        "target": "sweep-seed-missing"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/explain-dependency-path"
+    }
+  ],
+  "explain_iac_management_status": [
+    {
+      "arguments": {
+        "resource_id": "sweep-seed-missing",
+        "scope_id": "$SCOPE"
+      },
+      "body": {
+        "account_id": "",
+        "arn": "",
+        "finding_kinds": null,
+        "limit": 1,
+        "offset": 0,
+        "region": "",
+        "resource_id": "sweep-seed-missing",
+        "scope_id": "$SCOPE"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/iac/management-status/explain"
+    }
+  ],
+  "explain_supply_chain_impact": [
+    {
+      "arguments": {
+        "finding_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/impact/explain",
+      "query": {
+        "advisory_id": "",
+        "cve_id": "",
+        "finding_id": "sweep-seed-missing",
+        "image_ref": "",
+        "package_id": "",
+        "repository_id": "",
+        "service_id": "",
+        "subject_digest": "",
+        "workload_id": ""
+      }
+    }
+  ],
+  "export_cloud_runtime_drift_packet": [
+    {
+      "arguments": {
+        "max_source_facts": 5,
+        "provider": "aws",
+        "scope_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/investigations/drift/packet",
+      "query": {
+        "account_id": "",
+        "cloud_resource_uid": "",
+        "max_source_facts": "5",
+        "project_id": "",
+        "provider": "aws",
+        "scope_id": "sweep-seed-missing",
+        "subscription_id": ""
+      }
+    }
+  ],
+  "export_deployable_unit_packet": [
+    {
+      "arguments": {
+        "generation_id": "sweep-seed-missing",
+        "max_source_facts": 5,
+        "scope_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/investigations/deployable-unit/packet",
+      "query": {
+        "generation_id": "sweep-seed-missing",
+        "max_source_facts": "5",
+        "repo_id": "",
+        "repository_id": "",
+        "scope_id": "sweep-seed-missing"
+      }
+    }
+  ],
+  "export_supply_chain_impact_packet": [
+    {
+      "arguments": {
+        "finding_id": "sweep-seed-missing",
+        "max_source_facts": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/investigations/supply-chain/impact/packet",
+      "query": {
+        "advisory_id": "",
+        "cve_id": "",
+        "finding_id": "sweep-seed-missing",
+        "image_ref": "",
+        "max_source_facts": "5",
+        "package_id": "",
+        "repository_id": "",
+        "service_id": "",
+        "subject_digest": "",
+        "workload_id": ""
+      }
+    }
+  ],
+  "find_blast_radius": [
+    {
+      "arguments": {
+        "limit": 5,
+        "target": "$REPO",
+        "target_type": "repository"
+      },
+      "body": {
+        "limit": 5,
+        "target": "$REPO",
+        "target_type": "repository"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/blast-radius"
+    }
+  ],
+  "find_change_surface": [
+    {
+      "arguments": {
+        "limit": 5,
+        "target": "$REPO"
+      },
+      "body": {
+        "environment": "",
+        "limit": 5,
+        "target": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/change-surface"
+    }
+  ],
+  "find_code": [
+    {
+      "arguments": {
+        "limit": 5,
+        "query": "sweep",
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "exact": false,
+        "language": "",
+        "limit": 5,
+        "offset": 0,
+        "query": "sweep",
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/search"
+    }
+  ],
+  "find_code_divergence": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "include_tests": false,
+        "kind": "",
+        "limit": 5,
+        "offset": 0,
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/divergence/findings"
+    }
+  ],
+  "find_cross_repo_dead_code": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "consumer_repo_ids": [],
+        "evidence_detail": "handles",
+        "exclude_decorated_with": null,
+        "language": "",
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/dead-code/cross-repo"
+    }
+  ],
+  "find_dead_code": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "exclude_decorated_with": null,
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/dead-code"
+    }
+  ],
+  "find_dead_iac": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "families": null,
+        "include_ambiguous": false,
+        "limit": 5,
+        "offset": 0,
+        "repo_id": "$REPO",
+        "repo_ids": null
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/iac/dead"
+    }
+  ],
+  "find_function_call_chain": [
+    {
+      "arguments": {
+        "end": "sweepEnd",
+        "max_depth": 3,
+        "repo_id": "$REPO",
+        "start": "sweepStart"
+      },
+      "body": {
+        "cross_repo": false,
+        "end": "sweepEnd",
+        "end_entity_id": "",
+        "end_repo_id": "",
+        "max_depth": 3,
+        "repo_id": "$REPO",
+        "start": "sweepStart",
+        "start_entity_id": "",
+        "start_repo_id": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/call-chain"
+    }
+  ],
+  "find_infra_resources": [
+    {
+      "arguments": {
+        "limit": 5,
+        "query": "sweep"
+      },
+      "body": {
+        "category": "",
+        "environment": "",
+        "kind": "",
+        "limit": 5,
+        "provider": "",
+        "query": "sweep",
+        "resource_category": "",
+        "resource_service": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/infra/resources/search"
+    }
+  ],
+  "find_most_complex_functions": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/complexity"
+    }
+  ],
+  "find_symbol": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO",
+        "symbol": "sweepFn"
+      },
+      "body": {
+        "entity_type": "",
+        "entity_types": null,
+        "language": "",
+        "limit": 5,
+        "match_mode": "",
+        "offset": 0,
+        "repo_id": "$REPO",
+        "symbol": "sweepFn"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/symbols/search"
+    }
+  ],
+  "find_unmanaged_resource_owners": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": {
+        "account_id": "",
+        "finding_kinds": null,
+        "limit": 5,
+        "offset": 0,
+        "region": "",
+        "scope_id": "$SCOPE"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/replatforming/ownership-packets"
+    }
+  ],
+  "find_unmanaged_resources": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": {
+        "account_id": "",
+        "finding_kinds": null,
+        "limit": 5,
+        "offset": 0,
+        "region": "",
+        "scope_id": "$SCOPE"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/iac/unmanaged-resources"
+    }
+  ],
+  "get_answer_narration_status": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/status/answer-narration"
+    }
+  ],
+  "get_capability_catalog": [
+    {
+      "arguments": {
+        "limit": 5,
+        "view": "compact"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/capabilities",
+      "query": {
+        "limit": "5",
+        "offset": "0",
+        "view": "compact"
+      }
+    }
+  ],
+  "get_changed_since": [
+    {
+      "arguments": {
+        "repository": "$REPO",
+        "sample_limit": 5,
+        "since_observed_at": "2020-01-01T00:00:00Z"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/freshness/changed-since",
+      "query": {
+        "repository": "$REPO",
+        "sample_limit": "5",
+        "scope_id": "",
+        "since_generation_id": "",
+        "since_observed_at": "2020-01-01T00:00:00Z"
+      }
+    }
+  ],
+  "get_ci_cd_run_correlation_inventory": [
+    {
+      "arguments": {
+        "group_by": "outcome",
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/ci-cd/run-correlations/inventory",
+      "query": {
+        "artifact_digest": "",
+        "commit_sha": "",
+        "environment": "",
+        "group_by": "outcome",
+        "image_ref": "",
+        "limit": "5",
+        "offset": "0",
+        "outcome": "",
+        "provider": "",
+        "repository_id": "",
+        "scope_id": ""
+      }
+    }
+  ],
+  "get_code_relationship_story": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO",
+        "target": "sweepTarget"
+      },
+      "body": {
+        "cross_repo": false,
+        "direction": "",
+        "entity_id": "",
+        "include_transitive": false,
+        "language": "",
+        "limit": 5,
+        "max_depth": 5,
+        "offset": 0,
+        "relationship_type": "",
+        "relationship_types": null,
+        "repo_id": "$REPO",
+        "target": "sweepTarget",
+        "token_budget": 0
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/relationships/story"
+    }
+  ],
+  "get_collector_extraction_readiness": [
+    {
+      "arguments": {
+        "family": "pagerduty"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/collector-extraction-readiness/pagerduty"
+    }
+  ],
+  "get_collector_readiness": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/status/collector-readiness"
+    }
+  ],
+  "get_component_extension_diagnostics": [
+    {
+      "arguments": {
+        "component_id": "dev.eshu.collector.aws"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/component-extensions/dev.eshu.collector.aws/diagnostics"
+    }
+  ],
+  "get_container_image_identity_inventory": [
+    {
+      "arguments": {
+        "group_by": "outcome",
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/container-images/identities/inventory",
+      "query": {
+        "digest": "",
+        "group_by": "outcome",
+        "image_ref": "",
+        "limit": "5",
+        "offset": "0",
+        "outcome": "",
+        "repository_id": "",
+        "source_repository_id": ""
+      }
+    }
+  ],
+  "get_documentation_evidence_packet": [
+    {
+      "arguments": {
+        "finding_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/documentation/findings/sweep-seed-missing/evidence-packet"
+    }
+  ],
+  "get_documentation_finding_inventory": [
+    {
+      "arguments": {
+        "group_by": "status",
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/documentation/findings/inventory",
+      "query": {
+        "document_id": "",
+        "finding_type": "",
+        "freshness_state": "",
+        "group_by": "status",
+        "limit": "5",
+        "offset": "0",
+        "scope_id": "",
+        "source_id": "",
+        "status": "",
+        "truth_level": ""
+      }
+    }
+  ],
+  "get_ecosystem_overview": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/ecosystem/overview"
+    }
+  ],
+  "get_entity_content": [
+    {
+      "arguments": {
+        "entity_id": "sweep-seed-missing"
+      },
+      "body": {
+        "entity_id": "sweep-seed-missing"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/content/entities/read"
+    }
+  ],
+  "get_entity_context": [
+    {
+      "arguments": {
+        "entity_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/entities/sweep-seed-missing/context",
+      "query": {}
+    }
+  ],
+  "get_fact_schema_version": [
+    {
+      "arguments": {
+        "fact_kind": "terraform_state_resource"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/fact-schema-versions/terraform_state_resource"
+    }
+  ],
+  "get_file_content": [
+    {
+      "arguments": {
+        "relative_path": "README.md",
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "relative_path": "README.md",
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/content/files/read"
+    }
+  ],
+  "get_file_lines": [
+    {
+      "arguments": {
+        "end_line": 5,
+        "relative_path": "README.md",
+        "repo_id": "$REPO",
+        "start_line": 1
+      },
+      "body": {
+        "end_line": 5,
+        "relative_path": "README.md",
+        "repo_id": "$REPO",
+        "start_line": 1
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/content/files/lines"
+    }
+  ],
+  "get_freshness_causality": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/status/freshness-causality"
+    }
+  ],
+  "get_generation_lifecycle": [
+    {
+      "arguments": {
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/freshness/generations",
+      "query": {
+        "collector_kind": "",
+        "generation_id": "",
+        "limit": "5",
+        "repository": "",
+        "scope_id": "",
+        "source_system": "",
+        "status": ""
+      }
+    }
+  ],
+  "get_graph_summary_packet": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/ecosystem/graph-summary"
+    }
+  ],
+  "get_hosted_governance_status": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/status/governance"
+    }
+  ],
+  "get_hosted_readiness": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/status/hosted-readiness"
+    }
+  ],
+  "get_iac_management_status": [
+    {
+      "arguments": {
+        "resource_id": "sweep-seed-missing",
+        "scope_id": "$SCOPE"
+      },
+      "body": {
+        "account_id": "",
+        "arn": "",
+        "finding_kinds": null,
+        "limit": 1,
+        "offset": 0,
+        "region": "",
+        "resource_id": "sweep-seed-missing",
+        "scope_id": "$SCOPE"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/iac/management-status"
+    }
+  ],
+  "get_incident_context": [
+    {
+      "arguments": {
+        "limit": 5,
+        "provider_incident_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/incidents/sweep-seed-missing/context",
+      "query": {
+        "limit": "5",
+        "provider": "",
+        "scope_id": "",
+        "service_id": "",
+        "since": "",
+        "until": ""
+      }
+    }
+  ],
+  "get_index_status": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/index-status"
+    }
+  ],
+  "get_infra_resource_inventory": [
+    {
+      "arguments": {
+        "group_by": "provider",
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/infra/resources/inventory",
+      "query": {
+        "category": "",
+        "environment": "",
+        "group_by": "provider",
+        "kind": "",
+        "limit": "5",
+        "offset": "0",
+        "provider": "",
+        "resource_category": "",
+        "resource_service": "",
+        "resource_type": ""
+      }
+    }
+  ],
+  "get_ingester_status": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/status/ingesters/repository"
+    }
+  ],
+  "get_operator_control_plane": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/status/operator-control-plane"
+    }
+  ],
+  "get_package_registry_package_inventory": [
+    {
+      "arguments": {
+        "group_by": "ecosystem",
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/package-registry/packages/inventory",
+      "query": {
+        "ecosystem": "",
+        "group_by": "ecosystem",
+        "limit": "5",
+        "namespace": "",
+        "offset": "0",
+        "package_manager": "",
+        "registry": "",
+        "visibility": ""
+      }
+    }
+  ],
+  "get_relationship_evidence": [
+    {
+      "arguments": {
+        "resolved_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/evidence/relationships/sweep-seed-missing"
+    }
+  ],
+  "get_replatforming_rollups": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": {
+        "account_id": "",
+        "finding_kinds": null,
+        "limit": 5,
+        "offset": 0,
+        "region": "",
+        "scope_id": "$SCOPE"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/replatforming/rollups"
+    }
+  ],
+  "get_repo_context": [
+    {
+      "arguments": {
+        "repo_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories/$REPO/context"
+    }
+  ],
+  "get_repo_story": [
+    {
+      "arguments": {
+        "repo_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories/$REPO/story"
+    }
+  ],
+  "get_repo_summary": [
+    {
+      "arguments": {
+        "repo_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories/$REPO/stats"
+    }
+  ],
+  "get_repository_coverage": [
+    {
+      "arguments": {
+        "repo_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories/$REPO/coverage"
+    }
+  ],
+  "get_repository_freshness": [
+    {
+      "arguments": {
+        "repo_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories/$REPO/freshness",
+      "query": {
+        "expected_commit": ""
+      }
+    }
+  ],
+  "get_repository_language_inventory": [
+    {
+      "arguments": {
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories/language-inventory",
+      "query": {
+        "limit": "5",
+        "offset": "0"
+      }
+    }
+  ],
+  "get_repository_stats": [
+    {
+      "arguments": {
+        "repo_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories/$REPO/stats"
+    }
+  ],
+  "get_sbom_attestation_attachment_inventory": [
+    {
+      "arguments": {
+        "group_by": "attachment_status",
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/sbom-attestations/attachments/inventory",
+      "query": {
+        "artifact_kind": "",
+        "attachment_status": "",
+        "document_digest": "",
+        "document_id": "",
+        "group_by": "attachment_status",
+        "limit": "5",
+        "offset": "0",
+        "repository_id": "",
+        "service_id": "",
+        "subject_digest": "",
+        "workload_id": ""
+      }
+    }
+  ],
+  "get_security_alert_reconciliation_inventory": [
+    {
+      "arguments": {
+        "group_by": "provider",
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/security-alerts/reconciliations/inventory",
+      "query": {
+        "cve_id": "",
+        "ghsa_id": "",
+        "group_by": "provider",
+        "limit": "5",
+        "offset": "0",
+        "package_id": "",
+        "provider": "",
+        "provider_state": "",
+        "reconciliation_status": "",
+        "repository_id": ""
+      }
+    }
+  ],
+  "get_semantic_capability_status": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/status/semantic-extraction"
+    }
+  ],
+  "get_service_changed_since": [
+    {
+      "arguments": {
+        "sample_limit": 5,
+        "service_id": "sweep-seed-missing",
+        "since_generation_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/freshness/services/changed-since",
+      "query": {
+        "sample_limit": "5",
+        "scope_id": "",
+        "service_id": "sweep-seed-missing",
+        "since_generation_id": "sweep-seed-missing"
+      }
+    }
+  ],
+  "get_service_context": [
+    {
+      "arguments": {
+        "workload_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/services/sweep-seed-missing/context",
+      "query": {
+        "evidence_detail": "handles"
+      }
+    }
+  ],
+  "get_service_intelligence_report": [
+    {
+      "arguments": {
+        "workload_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/services/sweep-seed-missing/intelligence-report",
+      "query": {}
+    }
+  ],
+  "get_service_story": [
+    {
+      "arguments": {
+        "workload_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/services/sweep-seed-missing/story",
+      "query": {
+        "evidence_detail": "handles"
+      }
+    }
+  ],
+  "get_supply_chain_impact_inventory": [
+    {
+      "arguments": {
+        "group_by": "impact_status",
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/impact/inventory",
+      "query": {
+        "advisory_id": "",
+        "cve_id": "",
+        "ecosystem": "",
+        "environment": "",
+        "ghsa_id": "",
+        "group_by": "impact_status",
+        "image_ref": "",
+        "impact_status": "",
+        "limit": "5",
+        "min_priority_score": "0",
+        "offset": "0",
+        "osv_id": "",
+        "package_id": "",
+        "priority_bucket": "",
+        "profile": "",
+        "repository_id": "",
+        "service_id": "",
+        "severity": "",
+        "subject_digest": "",
+        "suppression_state": "",
+        "workload_id": ""
+      }
+    }
+  ],
+  "get_surface_inventory": [
+    {
+      "arguments": {
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/surface-inventory",
+      "query": {
+        "limit": "5",
+        "offset": "0"
+      }
+    }
+  ],
+  "get_vulnerability_scanner_read_contract": [
+    {
+      "arguments": {
+        "route": "impact_findings"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/vulnerability-scanner/contract",
+      "query": {
+        "route": "impact_findings"
+      }
+    }
+  ],
+  "get_workload_context": [
+    {
+      "arguments": {
+        "workload_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/workloads/sweep-seed-missing/context",
+      "query": {
+        "evidence_detail": "handles"
+      }
+    }
+  ],
+  "get_workload_story": [
+    {
+      "arguments": {
+        "workload_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/workloads/sweep-seed-missing/story",
+      "query": {}
+    }
+  ],
+  "inspect_call_graph_metrics": [
+    {
+      "arguments": {
+        "limit": 5,
+        "metric_type": "hub_functions",
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "language": "",
+        "limit": 5,
+        "metric_type": "hub_functions",
+        "offset": 0,
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/call-graph/metrics"
+    }
+  ],
+  "inspect_code_inventory": [
+    {
+      "arguments": {
+        "inventory_kind": "entity",
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "class_name": "",
+        "decorator": "",
+        "entity_kind": "",
+        "file_path": "",
+        "inventory_kind": "entity",
+        "language": "",
+        "limit": 5,
+        "method_name": "",
+        "offset": 0,
+        "repo_id": "$REPO",
+        "symbol": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/structure/inventory"
+    }
+  ],
+  "inspect_code_quality": [
+    {
+      "arguments": {
+        "check": "complexity",
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "check": "complexity",
+        "entity_id": "",
+        "function_name": "",
+        "language": "",
+        "limit": 5,
+        "min_arguments": 0,
+        "min_complexity": 0,
+        "min_lines": 0,
+        "offset": 0,
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/quality/inspect"
+    }
+  ],
+  "investigate_change_surface": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO",
+        "target": "$REPO",
+        "target_type": "repository"
+      },
+      "body": {
+        "changed_paths": null,
+        "environment": "",
+        "limit": 5,
+        "max_depth": 4,
+        "module_id": "",
+        "offset": 0,
+        "repo_id": "$REPO",
+        "resource_id": "",
+        "service_name": "",
+        "target": "$REPO",
+        "target_type": "repository",
+        "topic": "",
+        "workload_id": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/change-surface/investigate"
+    }
+  ],
+  "investigate_code_divergence": [
+    {
+      "arguments": {
+        "fingerprint": "sweep-fingerprint",
+        "kind": "exact",
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "fingerprint": "sweep-fingerprint",
+        "include_tests": false,
+        "kind": "exact",
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/divergence/investigate"
+    }
+  ],
+  "investigate_code_topic": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO",
+        "topic": "sweep"
+      },
+      "body": {
+        "intent": "",
+        "language": "",
+        "limit": 5,
+        "offset": 0,
+        "repo_id": "$REPO",
+        "topic": "sweep"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/topics/investigate"
+    }
+  ],
+  "investigate_contract_impact": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "consumer_repo_id": "",
+        "family": "",
+        "limit": 5,
+        "method": "",
+        "provider_repo_id": "",
+        "repo_id": "$REPO",
+        "route": "",
+        "service_name": "",
+        "topic": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/contracts"
+    }
+  ],
+  "investigate_dead_code": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "exclude_decorated_with": null,
+        "language": "",
+        "limit": 5,
+        "offset": 0,
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/dead-code/investigate"
+    }
+  ],
+  "investigate_deployment_config": [
+    {
+      "arguments": {
+        "limit": 5,
+        "service_name": "sweep-seed-missing"
+      },
+      "body": {
+        "environment": "",
+        "limit": 5,
+        "service_name": "sweep-seed-missing",
+        "workload_id": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/deployment-config-influence"
+    }
+  ],
+  "investigate_hardcoded_secrets": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "finding_kinds": null,
+        "include_suppressed": false,
+        "language": "",
+        "limit": 5,
+        "offset": 0,
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/security/secrets/investigate"
+    }
+  ],
+  "investigate_import_dependencies": [
+    {
+      "arguments": {
+        "limit": 5,
+        "query_type": "importers",
+        "repo_id": "$REPO",
+        "source_module": "sweep"
+      },
+      "body": {
+        "language": "",
+        "limit": 5,
+        "max_cycle_length": 0,
+        "offset": 0,
+        "query_type": "importers",
+        "repo_id": "$REPO",
+        "source_file": "",
+        "source_module": "sweep",
+        "target_file": "",
+        "target_module": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/imports/investigate"
+    }
+  ],
+  "investigate_resource": [
+    {
+      "arguments": {
+        "limit": 5,
+        "query": "sweep"
+      },
+      "body": {
+        "environment": "",
+        "limit": 5,
+        "max_depth": 4,
+        "query": "sweep",
+        "resource_id": "",
+        "resource_type": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/resource-investigation"
+    }
+  ],
+  "investigate_service": [
+    {
+      "arguments": {
+        "service_name": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/investigations/services/sweep-seed-missing",
+      "query": {
+        "environment": "",
+        "intent": "",
+        "question": ""
+      }
+    }
+  ],
+  "list_admission_decisions": [
+    {
+      "arguments": {
+        "domain": "sweep",
+        "generation_id": "sweep-seed-missing",
+        "limit": 5,
+        "scope_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/evidence/admission-decisions",
+      "query": {
+        "anchor_id": "",
+        "anchor_kind": "",
+        "domain": "sweep",
+        "generation_id": "sweep-seed-missing",
+        "include_evidence": "false",
+        "limit": "5",
+        "scope_id": "sweep-seed-missing",
+        "state": ""
+      }
+    }
+  ],
+  "list_advisory_evidence": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repository_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/advisories/evidence",
+      "query": {
+        "advisory_id": "",
+        "after_advisory_key": "",
+        "cve_id": "",
+        "limit": "5",
+        "package_id": "",
+        "repository_id": "$REPO",
+        "service_id": "",
+        "source": "",
+        "workload_id": ""
+      }
+    }
+  ],
+  "list_aws_runtime_drift_findings": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": {
+        "account_id": "",
+        "arn": "",
+        "finding_kinds": null,
+        "limit": 5,
+        "offset": 0,
+        "region": "",
+        "scope_id": "$SCOPE"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/aws/runtime-drift/findings"
+    }
+  ],
+  "list_changed_since_poisoned_links": [
+    {
+      "arguments": {
+        "limit": 5,
+        "timeout_ms": 5000
+      },
+      "body": {
+        "limit": 5,
+        "timeout_ms": 5000
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/admin/changed-since/poisoned-links/query"
+    }
+  ],
+  "list_ci_cd_run_correlations": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/ci-cd/run-correlations",
+      "query": {
+        "after_correlation_id": "",
+        "artifact_digest": "",
+        "commit_sha": "",
+        "environment": "",
+        "image_ref": "",
+        "limit": "5",
+        "outcome": "",
+        "provider": "",
+        "provider_run_id": "",
+        "repository_id": "",
+        "run_id": "",
+        "scope_id": "$SCOPE"
+      }
+    }
+  ],
+  "list_cloud_resource_inventory": [
+    {
+      "arguments": {
+        "limit": 5,
+        "provider": "aws"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/cloud/inventory",
+      "query": {
+        "limit": "5",
+        "provider": "aws"
+      }
+    }
+  ],
+  "list_cloud_runtime_drift_findings": [
+    {
+      "arguments": {
+        "limit": 5,
+        "provider": "aws",
+        "scope_id": "$SCOPE"
+      },
+      "body": {
+        "account_id": "",
+        "cloud_resource_uid": "",
+        "finding_kinds": null,
+        "limit": 5,
+        "offset": 0,
+        "project_id": "",
+        "provider": "aws",
+        "scope_id": "$SCOPE",
+        "subscription_id": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/cloud/runtime-drift/findings"
+    }
+  ],
+  "list_codeowners_ownership": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repository_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/codeowners/ownership",
+      "query": {
+        "after_order_index": "",
+        "after_pattern": "",
+        "after_ref": "",
+        "limit": "5",
+        "repository_id": "$REPO"
+      }
+    }
+  ],
+  "list_collector_extraction_readiness": [
+    {
+      "arguments": {
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/collector-extraction-readiness",
+      "query": {
+        "limit": "5"
+      }
+    }
+  ],
+  "list_collectors": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/status/collectors"
+    }
+  ],
+  "list_component_extensions": [
+    {
+      "arguments": {
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/component-extensions",
+      "query": {
+        "limit": "5"
+      }
+    }
+  ],
+  "list_container_image_identities": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repository_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/container-images/identities",
+      "query": {
+        "after_identity_id": "",
+        "digest": "",
+        "image_ref": "",
+        "limit": "5",
+        "outcome": "",
+        "repository_id": "$REPO",
+        "source_repository_id": ""
+      }
+    }
+  ],
+  "list_container_image_tag_history": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repository_id": "oci-registry://sweep.example/sweep",
+        "tag": "latest"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/images/tag-history",
+      "query": {
+        "cursor": "",
+        "limit": "5",
+        "offset": "0",
+        "repository_id": "oci-registry://sweep.example/sweep",
+        "tag": "latest"
+      }
+    }
+  ],
+  "list_dead_letter_work_items": [
+    {
+      "arguments": {
+        "limit": 5,
+        "timeout_ms": 5000
+      },
+      "body": {
+        "limit": 5,
+        "timeout_ms": 5000
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/admin/dead-letters/query"
+    }
+  ],
+  "list_documentation_facts": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/documentation/facts",
+      "query": {
+        "limit": "5",
+        "scope_id": "$SCOPE"
+      }
+    }
+  ],
+  "list_documentation_findings": [
+    {
+      "arguments": {
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/documentation/findings",
+      "query": {
+        "limit": "5"
+      }
+    }
+  ],
+  "list_fact_schema_versions": [
+    {
+      "arguments": {
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/fact-schema-versions",
+      "query": {
+        "limit": "5"
+      }
+    }
+  ],
+  "list_indexed_repositories": [
+    {
+      "arguments": {
+        "limit": 50,
+        "offset": 0
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories",
+      "query": {
+        "limit": "50",
+        "offset": "0"
+      }
+    }
+  ],
+  "list_ingesters": [
+    {
+      "arguments": {},
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/status/ingesters"
+    }
+  ],
+  "list_investigation_workflows": [
+    {
+      "arguments": {
+        "limit": 5,
+        "view": "compact"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/investigation-workflows",
+      "query": {
+        "limit": "5",
+        "offset": "0",
+        "view": "compact"
+      }
+    }
+  ],
+  "list_kubernetes_correlations": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/kubernetes/correlations",
+      "query": {
+        "after_correlation_id": "",
+        "cluster_id": "",
+        "drift_kind": "",
+        "image_ref": "",
+        "limit": "5",
+        "namespace": "",
+        "outcome": "",
+        "scope_id": "$SCOPE",
+        "source_digest": "",
+        "workload_object_id": ""
+      }
+    }
+  ],
+  "list_observability_coverage_correlations": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/observability/coverage/correlations",
+      "query": {
+        "after_correlation_id": "",
+        "coverage_signal": "",
+        "coverage_status": "",
+        "limit": "5",
+        "observability_object_ref": "",
+        "outcome": "",
+        "provider": "",
+        "resource_class": "",
+        "scope_id": "$SCOPE",
+        "source_class": "",
+        "target_service_ref": "",
+        "target_uid": ""
+      }
+    }
+  ],
+  "list_package_registry_correlations": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repository_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/package-registry/correlations",
+      "query": {
+        "after_correlation_id": "",
+        "limit": "5",
+        "package_id": "",
+        "relationship_kind": "",
+        "repository_id": "$REPO"
+      }
+    }
+  ],
+  "list_package_registry_dependencies": [
+    {
+      "arguments": {
+        "limit": 5,
+        "package_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/package-registry/dependencies",
+      "query": {
+        "after_dependency_id": "",
+        "after_version_id": "",
+        "limit": "5",
+        "package_id": "sweep-seed-missing",
+        "version_id": ""
+      }
+    }
+  ],
+  "list_package_registry_packages": [
+    {
+      "arguments": {
+        "ecosystem": "npm",
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/package-registry/packages",
+      "query": {
+        "ecosystem": "npm",
+        "limit": "5",
+        "name": "",
+        "package_id": ""
+      }
+    }
+  ],
+  "list_package_registry_versions": [
+    {
+      "arguments": {
+        "limit": 5,
+        "package_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/package-registry/versions",
+      "query": {
+        "limit": "5",
+        "package_id": "sweep-seed-missing"
+      }
+    }
+  ],
+  "list_query_playbooks": [
+    {
+      "arguments": {
+        "limit": 5,
+        "view": "compact"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/query-playbooks",
+      "query": {
+        "limit": "5",
+        "offset": "0",
+        "view": "compact"
+      }
+    }
+  ],
+  "list_reducer_input_invalid_facts": [
+    {
+      "arguments": {
+        "generation_id": "sweep-seed-missing",
+        "limit": 5,
+        "scope_id": "sweep-seed-missing",
+        "timeout_ms": 5000
+      },
+      "body": {
+        "generation_id": "sweep-seed-missing",
+        "limit": 5,
+        "scope_id": "sweep-seed-missing",
+        "timeout_ms": 5000
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/admin/input-invalid-facts/query"
+    }
+  ],
+  "list_relationship_edges": [
+    {
+      "arguments": {
+        "limit": 5,
+        "verb": "DEPENDS_ON"
+      },
+      "body": {
+        "limit": 5,
+        "verb": "DEPENDS_ON"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/relationships/edges"
+    }
+  ],
+  "list_repositories_by_language": [
+    {
+      "arguments": {
+        "language": "go",
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories/by-language",
+      "query": {
+        "language": "go",
+        "limit": "5",
+        "offset": "0"
+      }
+    }
+  ],
+  "list_repository_files": [
+    {
+      "arguments": {
+        "repo_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/repositories/$REPO/tree",
+      "query": {}
+    }
+  ],
+  "list_runtime_version_declarations": [
+    {
+      "arguments": {
+        "limit": 5,
+        "major_below": 20,
+        "runtime": "node"
+      },
+      "body": {
+        "limit": 5,
+        "major_below": 20,
+        "runtime": "node"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/runtime-declarations/query"
+    }
+  ],
+  "list_sbom_attestation_attachments": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repository_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/sbom-attestations/attachments",
+      "query": {
+        "after_attachment_id": "",
+        "artifact_kind": "",
+        "attachment_status": "",
+        "digest": "",
+        "document_digest": "",
+        "document_id": "",
+        "limit": "5",
+        "repository_id": "$REPO",
+        "service_id": "",
+        "subject_digest": "",
+        "workload_id": ""
+      }
+    }
+  ],
+  "list_secrets_iam_identity_trust_chains": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/secrets-iam/identity-trust-chains",
+      "query": {
+        "after_chain_id": "",
+        "chain_id": "",
+        "iam_role_fingerprint": "",
+        "limit": "5",
+        "scope_id": "$SCOPE",
+        "service_account_join_key": "",
+        "state": "",
+        "workload_object_id": ""
+      }
+    }
+  ],
+  "list_secrets_iam_posture_gaps": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/secrets-iam/posture-gaps",
+      "query": {
+        "after_gap_id": "",
+        "gap_id": "",
+        "gap_type": "",
+        "limit": "5",
+        "scope_id": "$SCOPE",
+        "service_account_join_key": "",
+        "state": ""
+      }
+    }
+  ],
+  "list_secrets_iam_privilege_posture_observations": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/secrets-iam/privilege-posture-observations",
+      "query": {
+        "after_observation_id": "",
+        "limit": "5",
+        "observation_id": "",
+        "risk_type": "",
+        "scope_id": "$SCOPE",
+        "severity": "",
+        "state": ""
+      }
+    }
+  ],
+  "list_secrets_iam_secret_access_paths": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/secrets-iam/secret-access-paths",
+      "query": {
+        "after_path_id": "",
+        "chain_id": "",
+        "limit": "5",
+        "path_id": "",
+        "scope_id": "$SCOPE",
+        "state": "",
+        "vault_mount_join_key": ""
+      }
+    }
+  ],
+  "list_security_alert_reconciliations": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repository_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/security-alerts/reconciliations",
+      "query": {
+        "after_reconciliation_id": "",
+        "cve_id": "",
+        "ghsa_id": "",
+        "limit": "5",
+        "package_id": "",
+        "provider": "",
+        "provider_state": "",
+        "reconciliation_status": "",
+        "repository_id": "$REPO"
+      }
+    }
+  ],
+  "list_semantic_code_hints": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/semantic/code-hints",
+      "query": {
+        "limit": "5",
+        "scope_id": "$SCOPE"
+      }
+    }
+  ],
+  "list_semantic_documentation_observations": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/semantic/documentation-observations",
+      "query": {
+        "limit": "5",
+        "scope_id": "$SCOPE"
+      }
+    }
+  ],
+  "list_service_catalog_correlations": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/service-catalog/correlations",
+      "query": {
+        "after_correlation_id": "",
+        "drift_status": "",
+        "entity_ref": "",
+        "limit": "5",
+        "outcome": "",
+        "owner_ref": "",
+        "provider": "",
+        "repository_id": "",
+        "scope_id": "$SCOPE",
+        "service_id": "",
+        "workload_id": ""
+      }
+    }
+  ],
+  "list_supply_chain_impact_findings": [
+    {
+      "arguments": {
+        "limit": 5,
+        "repository_id": "$REPO"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/supply-chain/impact/findings",
+      "query": {
+        "advisory_id": "",
+        "after_finding_id": "",
+        "cve_id": "",
+        "ecosystem": "",
+        "environment": "",
+        "ghsa_id": "",
+        "image_ref": "",
+        "impact_status": "",
+        "limit": "5",
+        "min_priority_score": "0",
+        "osv_id": "",
+        "package_id": "",
+        "priority_bucket": "",
+        "profile": "",
+        "repository_id": "$REPO",
+        "service_id": "",
+        "severity": "",
+        "sort": "",
+        "subject_digest": "",
+        "suppression_state": "",
+        "workload_id": ""
+      }
+    }
+  ],
+  "list_terraform_config_state_drift_findings": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$STATE_SCOPE"
+      },
+      "body": {
+        "address": "",
+        "drift_kinds": null,
+        "limit": 5,
+        "offset": 0,
+        "outcome": "",
+        "scope_id": "$STATE_SCOPE"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/terraform/config-state-drift/findings"
+    }
+  ],
+  "list_work_item_evidence": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/work-items/evidence",
+      "query": {
+        "after_fact_id": "",
+        "external_url": "",
+        "limit": "5",
+        "observed_after": "",
+        "project_key": "",
+        "provider_work_item_id": "",
+        "scope_id": "$SCOPE",
+        "url_fingerprint": "",
+        "work_item_key": ""
+      }
+    }
+  ],
+  "plan_developer_change": [
+    {
+      "arguments": {
+        "developer_intent": "sweep",
+        "limit": 5,
+        "repo_id": "$REPO",
+        "target": "$REPO",
+        "target_type": "repository"
+      },
+      "body": {
+        "base_ref": "",
+        "changed_paths": null,
+        "changes": null,
+        "developer_intent": "sweep",
+        "environment": "",
+        "head_ref": "",
+        "limit": 5,
+        "max_depth": 4,
+        "module_id": "",
+        "offset": 0,
+        "repo_id": "$REPO",
+        "resource_id": "",
+        "service_name": "",
+        "target": "$REPO",
+        "target_type": "repository",
+        "topic": "",
+        "workload_id": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/developer-change-plan"
+    }
+  ],
+  "propose_terraform_import_plan": [
+    {
+      "arguments": {
+        "limit": 5,
+        "scope_id": "$SCOPE"
+      },
+      "body": {
+        "account_id": "",
+        "arn": "",
+        "finding_kinds": null,
+        "limit": 5,
+        "offset": 0,
+        "region": "",
+        "resource_id": "",
+        "scope_id": "$SCOPE"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/iac/terraform-import-plan/candidates"
+    }
+  ],
+  "report_code_divergence": [
+    {
+      "arguments": {
+        "repo_id": "$REPO",
+        "top_per_kind": 3
+      },
+      "body": {
+        "include_tests": false,
+        "repo_id": "$REPO",
+        "top_per_kind": 3
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/divergence/report"
+    }
+  ],
+  "resolve_entity": [
+    {
+      "arguments": {
+        "limit": 5,
+        "query": "sweep",
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "limit": 5,
+        "name": "sweep",
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/entities/resolve"
+    }
+  ],
+  "resolve_investigation_workflow": [
+    {
+      "arguments": {
+        "inputs": {},
+        "workflow_id": "sweep-seed-missing"
+      },
+      "body": {
+        "inputs": {},
+        "missing_evidence": [],
+        "workflow_id": "sweep-seed-missing"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/investigation-workflows/resolve"
+    }
+  ],
+  "resolve_query_playbook": [
+    {
+      "arguments": {
+        "inputs": {},
+        "playbook_id": "sweep-seed-missing"
+      },
+      "body": {
+        "inputs": {},
+        "playbook_id": "sweep-seed-missing"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/query-playbooks/resolve"
+    }
+  ],
+  "search_dockerfile_installs": [
+    {
+      "arguments": {
+        "limit": 5,
+        "package": "curl",
+        "repo_ids": [
+          "$REPO"
+        ]
+      },
+      "body": {
+        "limit": 5,
+        "package": "curl",
+        "repo_ids": [
+          "$REPO"
+        ]
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/content/dockerfile-installs/search"
+    }
+  ],
+  "search_entity_content": [
+    {
+      "arguments": {
+        "limit": 5,
+        "pattern": "sweep",
+        "repo_ids": [
+          "$REPO"
+        ]
+      },
+      "body": {
+        "limit": 5,
+        "offset": 0,
+        "query": "sweep",
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/content/entities/search"
+    }
+  ],
+  "search_file_content": [
+    {
+      "arguments": {
+        "limit": 5,
+        "pattern": "sweep",
+        "repo_ids": [
+          "$REPO"
+        ]
+      },
+      "body": {
+        "limit": 5,
+        "offset": 0,
+        "query": "sweep",
+        "repo_id": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/content/files/search"
+    }
+  ],
+  "search_registry_bundles": [
+    {
+      "arguments": {
+        "limit": 5,
+        "query": "sweep"
+      },
+      "body": {
+        "ecosystem": "",
+        "limit": 5,
+        "query": "sweep",
+        "unique_only": false
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/bundles"
+    }
+  ],
+  "search_semantic_context": [
+    {
+      "arguments": {
+        "limit": 5,
+        "mode": "keyword",
+        "query": "sweep",
+        "repo_id": "$REPO",
+        "timeout_ms": 5000
+      },
+      "body": {
+        "environment": "",
+        "languages": null,
+        "limit": 5,
+        "mode": "keyword",
+        "query": "sweep",
+        "repo_id": "$REPO",
+        "rerank": false,
+        "service_id": "",
+        "source_kinds": null,
+        "timeout_ms": 5000,
+        "workload_id": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/search/semantic"
+    }
+  ],
+  "trace_deployment_chain": [
+    {
+      "arguments": {
+        "max_depth": 3,
+        "service_name": "sweep-seed-missing"
+      },
+      "body": {
+        "direct_only": true,
+        "evidence_detail": "handles",
+        "include_related_module_usage": false,
+        "max_depth": 3,
+        "service_name": "sweep-seed-missing"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/trace-deployment-chain"
+    }
+  ],
+  "trace_exposure_path": [
+    {
+      "arguments": {
+        "max_depth": 3,
+        "repo_id": "$REPO",
+        "source": "sweep-source"
+      },
+      "body": {
+        "max_depth": 3,
+        "repo_id": "$REPO",
+        "source": "sweep-source",
+        "source_entity_id": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/trace-exposure-path"
+    }
+  ],
+  "trace_resource_to_code": [
+    {
+      "arguments": {
+        "limit": 5,
+        "start": "$REPO"
+      },
+      "body": {
+        "environment": "",
+        "limit": 5,
+        "max_depth": 8,
+        "start": "$REPO"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/impact/trace-resource-to-code"
+    }
+  ],
+  "trace_route_callers": [
+    {
+      "arguments": {
+        "limit": 5,
+        "path": "/sweep",
+        "repo_id": "$REPO"
+      },
+      "body": {
+        "limit": 5,
+        "max_depth": 2,
+        "method": "",
+        "path": "/sweep",
+        "repo_id": "$REPO",
+        "service_id": "",
+        "service_name": ""
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/routes/callers"
+    }
+  ],
+  "visualize_graph_query": [
+    {
+      "arguments": {
+        "cypher_query": "MATCH (n:Repository) RETURN n LIMIT 1",
+        "limit": 1
+      },
+      "body": {
+        "cypher_query": "MATCH (n:Repository) RETURN n LIMIT 1",
+        "limit": 1
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/code/visualize"
+    }
+  ]
+}

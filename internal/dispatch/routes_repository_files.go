@@ -1,0 +1,45 @@
+package dispatch
+
+import (
+	"fmt"
+	"net/url"
+
+	"github.com/eshu-hq/eshu-mcp/internal/routecontract"
+)
+
+// repositoryFilesRoute maps a list_repository_files call to the bounded
+// GET /api/v0/repositories/{repo_id}/tree endpoint. The optional language
+// query parameter is forwarded verbatim; the API applies alias expansion
+// (e.g. typescript also matches tsx) and returns an empty listing for an
+// unrecognised token rather than an error, which is the correct bounded
+// behaviour for an open-token language filter.
+func repositoryFilesRoute(toolName string, args map[string]any) (*routecontract.Request, bool, error) {
+	if toolName != "list_repository_files" {
+		return nil, false, nil
+	}
+
+	repoID := str(args, "repo_id")
+	if repoID == "" {
+		return nil, true, fmt.Errorf("repo_id is required")
+	}
+
+	q := map[string]string{}
+	if lang := str(args, "language"); lang != "" {
+		q["language"] = lang
+	}
+	if path := str(args, "path"); path != "" {
+		q["path"] = path
+	}
+	if boolOr(args, "recursive", false) {
+		q["recursive"] = "true"
+	}
+	if ref := str(args, "ref"); ref != "" {
+		q["ref"] = ref
+	}
+
+	return &routecontract.Request{
+		Method: "GET",
+		Path:   "/api/v0/repositories/" + url.PathEscape(repoID) + "/tree",
+		Query:  q,
+	}, true, nil
+}

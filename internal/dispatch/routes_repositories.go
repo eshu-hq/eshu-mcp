@@ -1,0 +1,128 @@
+package dispatch
+
+import (
+	"fmt"
+	"net/url"
+
+	runtimedeclarationtools "github.com/eshu-hq/eshu-mcp/internal/dispatch/runtime/declaration"
+	"github.com/eshu-hq/eshu-mcp/internal/routecontract"
+)
+
+// repositorySummarySelector resolves the repository selector for
+// get_repo_summary. repo_id is the canonical field; repo_name is a documented
+// backward-compatibility alias for clients that predate repo_id and takes
+// effect only when repo_id is absent.
+//
+// The advertised input schema lists neither field as required so that a
+// legacy repo_name-only call passes schema validation under MCP clients that
+// honor inputSchema (the OpenAI MCP contract test forbids a top-level
+// anyOf/oneOf that would otherwise express "exactly one of"). Because schema
+// validation no longer forces a selector, this helper enforces the
+// "at least one present" invariant and returns a clear error when both are
+// absent instead of building a malformed empty-selector path.
+func repositorySummarySelector(args map[string]any) (string, error) {
+	selector := str(args, "repo_id")
+	if selector == "" {
+		selector = str(args, "repo_name")
+	}
+	if selector == "" {
+		return "", fmt.Errorf("repo_id or repo_name is required")
+	}
+	return selector, nil
+}
+
+// runtimeDeclarationRoute adapts the child package's runtime declaration
+// request into the root dispatcher's transport route (#8817). It lives here,
+// not in a new dispatch_*.go file, to keep the root non-test file count at its
+// dirgate pin.
+func runtimeDeclarationRoute(toolName string, args map[string]any) (*routecontract.Request, bool) {
+	return adaptChildRoute(runtimedeclarationtools.Route(toolName, routecontract.Arguments(args)))
+}
+
+func repositoryRoute(toolName string, args map[string]any) (*routecontract.Request, bool, error) {
+	// Families extracted under #6058 answer first. Their tool names are
+	// disjoint from the arms below, so this keeps repositoryRoute's own
+	// position in resolveRoute and each family's resolution unchanged.
+	if route, ok := packageRegistryRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := cicdRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := codeownersRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := runtimeDeclarationRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := secretsIAMRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := observabilityCoverageRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := containerImageRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := supplyChainImpactRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := supplyChainEvidenceRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := securityAlertRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := admissionDecisionsRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	if route, ok := kubernetesCorrelationsRoute(toolName, args); ok {
+		return route, true, nil
+	}
+	switch toolName {
+	case "list_indexed_repositories":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories", Query: paginationQuery(args, 100)}, true, nil
+	case "count_repositories_by_language":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/by-language", Query: map[string]string{
+			"language": str(args, "language"),
+			"limit":    "0",
+			"offset":   "0",
+		}}, true, nil
+	case "list_repositories_by_language":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/by-language", Query: map[string]string{
+			"language": str(args, "language"),
+			"limit":    intString(args, "limit", 100),
+			"offset":   intString(args, "offset", 0),
+		}}, true, nil
+	case "get_repository_language_inventory":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/language-inventory", Query: paginationQuery(args, 100)}, true, nil
+	case "get_repository_stats":
+		repoID := str(args, "repo_id")
+		if repoID == "" {
+			return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories"}, true, nil
+		}
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(repoID) + "/stats"}, true, nil
+	case "get_repo_context":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(str(args, "repo_id")) + "/context"}, true, nil
+	case "get_relationship_evidence":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/evidence/relationships/" + url.PathEscape(str(args, "resolved_id"))}, true, nil
+	case "list_service_catalog_correlations":
+		return serviceCatalogCorrelationsRoute(args), true, nil
+	case "get_repo_story":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(str(args, "repo_id")) + "/story"}, true, nil
+	case "get_repo_summary":
+		selector, err := repositorySummarySelector(args)
+		if err != nil {
+			return nil, true, err
+		}
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(selector) + "/stats"}, true, nil
+	case "get_repository_coverage":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(str(args, "repo_id")) + "/coverage"}, true, nil
+	case "get_repository_freshness":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(str(args, "repo_id")) + "/freshness", Query: map[string]string{
+			"expected_commit": str(args, "expected_commit"),
+		}}, true, nil
+	default:
+		return nil, false, nil
+	}
+}

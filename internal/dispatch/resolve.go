@@ -1,0 +1,321 @@
+package dispatch
+
+// Ported from go/internal/mcp/dispatch.go at 9922b49: ResolveRoute, the
+// selectRoute chain with its inline arms, and the family adapters. Only
+// import paths changed here; the HTTP execution half of that file lives in
+// runner.go and calls core over the network instead of in-process. See
+// docs/parity.md.
+
+import (
+	"errors"
+	"fmt"
+	"net/url"
+
+	deadcodetools "github.com/eshu-hq/eshu-mcp/internal/dispatch/code/dead"
+	codedivergencetools "github.com/eshu-hq/eshu-mcp/internal/dispatch/code/divergence"
+	codeinteltools "github.com/eshu-hq/eshu-mcp/internal/dispatch/code/intel"
+	codequalitytools "github.com/eshu-hq/eshu-mcp/internal/dispatch/code/quality"
+	contenttools "github.com/eshu-hq/eshu-mcp/internal/dispatch/content"
+	entityresolutiontools "github.com/eshu-hq/eshu-mcp/internal/dispatch/entity/resolution"
+	iacmanagementtools "github.com/eshu-hq/eshu-mcp/internal/dispatch/iac/management"
+	routecontract "github.com/eshu-hq/eshu-mcp/internal/routecontract"
+)
+
+// errUnknownTool is the cause selectRoute reports for a tool name no route
+// claims. Its text is the dispatch error a client has always seen.
+var errUnknownTool = errors.New("unknown tool")
+
+// ResolveRoute maps a tool name and its arguments to a versioned core HTTP
+// route. A route whose path carries an empty segment (a required id argument
+// left empty) is refused here with an error naming the missing argument,
+// before any request is built: core would answer that "//" path with a 307
+// redirect instead of running the handler.
+func ResolveRoute(toolName string, args map[string]any) (*routecontract.Request, error) {
+	route, err := selectRoute(toolName, args)
+	if err != nil {
+		return nil, err
+	}
+	if err := rejectEmptyPathSegment(toolName, args, route); err != nil {
+		return nil, err
+	}
+	return route, nil
+}
+
+// selectRoute picks the route for a tool by walking the family selectors and
+// the root switch; ResolveRoute validates what it returns.
+func selectRoute(toolName string, args map[string]any) (*routecontract.Request, error) {
+	if route, ok := documentationRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := cloudInventoryRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := cloudRuntimeDriftRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := semanticEvidenceRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := semanticSearchRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok, err := repositoryRoute(toolName, args); ok {
+		return route, err
+	}
+	if route, ok, err := relationshipEdgesRoute(toolName, args); ok {
+		return route, err
+	}
+	if route, ok, err := repositoryFilesRoute(toolName, args); ok {
+		return route, err
+	}
+	if route, ok := ecosystemRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := compareRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := freshnessRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := queryPlaybookRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := investigationWorkflowRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := investigationPacketRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := visualizationRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok, err := statusRoute(toolName, args); ok {
+		return route, err
+	}
+	if route, ok := askRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := codeFlowRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := codeIntelRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := deadCodeRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := codeQualityRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := codeDivergenceRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := entityResolutionRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := iacManagementRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := contentRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok, err := codeRelationshipRoute(toolName, args); ok {
+		return route, err
+	}
+	if route, ok := infraResourceSearchRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok := infraInventoryRoute(toolName, args); ok {
+		return route, nil
+	}
+	if route, ok, err := serviceContextRoute(toolName, args); ok {
+		return route, err
+	}
+	if route, ok := replatformingRoute(toolName, args); ok {
+		return route, nil
+	}
+	switch toolName {
+	// ── Code ──
+	case "investigate_import_dependencies":
+		return &routecontract.Request{Method: "POST", Path: "/api/v0/code/imports/investigate", Body: map[string]any{
+			"query_type":       str(args, "query_type"),
+			"repo_id":          str(args, "repo_id"),
+			"language":         str(args, "language"),
+			"source_file":      str(args, "source_file"),
+			"target_file":      str(args, "target_file"),
+			"source_module":    str(args, "source_module"),
+			"target_module":    str(args, "target_module"),
+			"limit":            intOr(args, "limit", 25),
+			"offset":           intOr(args, "offset", 0),
+			"max_cycle_length": intOr(args, "max_cycle_length", 0),
+		}}, nil
+	case "investigate_hardcoded_secrets":
+		return &routecontract.Request{Method: "POST", Path: "/api/v0/code/security/secrets/investigate", Body: map[string]any{
+			"repo_id":            str(args, "repo_id"),
+			"language":           str(args, "language"),
+			"finding_kinds":      stringSlice(args, "finding_kinds"),
+			"include_suppressed": boolOr(args, "include_suppressed", false),
+			"limit":              intOr(args, "limit", 25),
+			"offset":             intOr(args, "offset", 0),
+		}}, nil
+	case "list_aws_runtime_drift_findings":
+		return &routecontract.Request{Method: "POST", Path: "/api/v0/aws/runtime-drift/findings", Body: awsRuntimeDriftFindingsBody(args)}, nil
+	case "execute_cypher_query":
+		return &routecontract.Request{Method: "POST", Path: "/api/v0/code/cypher", Body: map[string]any{
+			"cypher_query": str(args, "cypher_query"),
+			"limit":        intOr(args, "limit", 100),
+		}}, nil
+	case "visualize_graph_query":
+		return &routecontract.Request{Method: "POST", Path: "/api/v0/code/visualize", Body: map[string]any{
+			"cypher_query": str(args, "cypher_query"),
+			"limit":        intOr(args, "limit", 100),
+		}}, nil
+	case "search_registry_bundles":
+		return &routecontract.Request{Method: "POST", Path: "/api/v0/code/bundles", Body: map[string]any{
+			"query":       str(args, "query"),
+			"ecosystem":   str(args, "ecosystem"),
+			"unique_only": boolOr(args, "unique_only", false),
+			"limit":       intOr(args, "limit", 50),
+		}}, nil
+
+	// ── Entities ──
+	case "get_workload_context":
+		q := map[string]string{"evidence_detail": "handles"}
+		if env := str(args, "environment"); env != "" {
+			q["environment"] = env
+		}
+		// #7129: handles keeps a populated service inside the response budget;
+		// an explicit value wins, and the handler rejects an unknown one.
+		if detail := str(args, "evidence_detail"); detail != "" {
+			q["evidence_detail"] = detail
+		}
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/workloads/" + url.PathEscape(str(args, "workload_id")) + "/context", Query: q}, nil
+	case "get_workload_story":
+		q := map[string]string{}
+		if env := str(args, "environment"); env != "" {
+			q["environment"] = env
+		}
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/workloads/" + url.PathEscape(str(args, "workload_id")) + "/story", Query: q}, nil
+	case "get_incident_context":
+		incidentID := str(args, "provider_incident_id")
+		if incidentID == "" {
+			incidentID = str(args, "incident_id")
+		}
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/incidents/" + url.PathEscape(incidentID) + "/context", Query: map[string]string{
+			"provider":   str(args, "provider"),
+			"scope_id":   str(args, "scope_id"),
+			"service_id": str(args, "service_id"),
+			"since":      str(args, "since"),
+			"until":      str(args, "until"),
+			"limit":      intString(args, "limit", 25),
+		}}, nil
+	case "list_work_item_evidence":
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/work-items/evidence", Query: map[string]string{
+			"scope_id":              str(args, "scope_id"),
+			"project_key":           str(args, "project_key"),
+			"work_item_key":         str(args, "work_item_key"),
+			"provider_work_item_id": str(args, "provider_work_item_id"),
+			"external_url":          str(args, "external_url"),
+			"url_fingerprint":       str(args, "url_fingerprint"),
+			"observed_after":        str(args, "observed_after"),
+			"after_fact_id":         str(args, "after_fact_id"),
+			"limit":                 intString(args, "limit", 25),
+		}}, nil
+
+	default:
+		// Impact-analysis request selection lives in internal/mcp/impact and
+		// reaches dispatch through the impactRoute adapter in
+		// dispatch_impact.go, consulted here in the default case — the same
+		// point in the chain that the family occupied before the extraction.
+		if r, ok := impactRoute(toolName, args); ok {
+			return r, nil
+		}
+		return nil, fmt.Errorf("%w: %s", errUnknownTool, toolName)
+	}
+}
+
+// deadCodeRoute adapts the child package's dead-code request selection into
+// the root dispatcher's transport route. The family's three arms lived in
+// this file's own switch before the extraction; the delegation now sits with
+// the other route delegations ahead of the switch, which changes nothing a
+// caller can observe because every arm in the chain claims tool names
+// exactly and no other arm claims these three. The adapter lives here rather
+// than in a new dispatch_dead_code.go so the root non-test file set stays at
+// its dirgate pin.
+func deadCodeRoute(toolName string, args map[string]any) (*routecontract.Request, bool) {
+	return adaptChildRoute(deadcodetools.Route(toolName, routecontract.Arguments(args)))
+}
+
+// codeQualityRoute adapts the child package's complexity/quality request
+// selection into the root dispatcher's transport route. The family's three
+// arms lived in this file's own switch before the extraction; the delegation
+// sits with the other route delegations ahead of the switch, which changes
+// nothing a caller can observe because every arm in the chain claims tool
+// names exactly and no other arm claims these three. The adapter lives here
+// rather than in a new dispatch file so the root non-test file set stays at
+// its dirgate pin.
+func codeQualityRoute(toolName string, args map[string]any) (*routecontract.Request, bool) {
+	return adaptChildRoute(codequalitytools.Route(toolName, routecontract.Arguments(args)))
+}
+
+// codeDivergenceRoute adapts the child package's divergence request
+// selection into the root dispatcher's transport route, exactly as
+// codeQualityRoute above adapts its family: same delegation position
+// discipline (family-grouped, after quality), same dirgate reason for
+// living in this file. The adapter claims tool names exactly and no other
+// arm claims these two.
+func codeDivergenceRoute(toolName string, args map[string]any) (*routecontract.Request, bool) {
+	return adaptChildRoute(codedivergencetools.Route(toolName, routecontract.Arguments(args)))
+}
+
+// entityResolutionRoute adapts the child package's entity-resolution request
+// selection into the root dispatcher's transport route, exactly as
+// deadCodeRoute and codeQualityRoute above adapt theirs: same former-switch
+// arms, same delegation position, same dirgate reason for living in this
+// file. search_entity_content is not part of this family — its body comes
+// entirely from contentSearchBody, shared with search_file_content, and that
+// pair now lives together in the content child reached through
+// contentRoute below.
+func entityResolutionRoute(toolName string, args map[string]any) (*routecontract.Request, bool) {
+	return adaptChildRoute(entityresolutiontools.Route(toolName, routecontract.Arguments(args)))
+}
+
+// codeIntelRoute adapts the child package's code-intelligence request
+// selection into the root dispatcher's transport route, exactly as
+// deadCodeRoute, codeQualityRoute, and entityResolutionRoute above adapt
+// theirs: same former-switch arms, same delegation position, same dirgate
+// reason for living in this file. search_entity_content is not part of this
+// family either; see the codeintel package doc for why, and contentRoute
+// below for where it lives now.
+func codeIntelRoute(toolName string, args map[string]any) (*routecontract.Request, bool) {
+	return adaptChildRoute(codeinteltools.Route(toolName, routecontract.Arguments(args)))
+}
+
+// contentRoute adapts the child package's content request selection into
+// the root dispatcher's transport route, exactly as deadCodeRoute,
+// codeQualityRoute, entityResolutionRoute, and codeIntelRoute above adapt
+// theirs: same former-switch arms (get_file_content, get_file_lines,
+// build_evidence_citation_packet, search_file_content, and
+// search_entity_content lived in this file's own "── Content ──" switch
+// section before the extraction), same delegation position, same dirgate
+// reason for living in this file. get_entity_content stays in
+// entityResolutionRoute above rather than joining this family — its
+// registration is grouped with these five in tools_content.go, but its
+// routing shares no helper with them.
+func contentRoute(toolName string, args map[string]any) (*routecontract.Request, bool) {
+	return adaptChildRoute(contenttools.Route(toolName, routecontract.Arguments(args)))
+}
+
+// iacManagementRoute adapts the child package's IaC-management request
+// selection into the root dispatcher's transport route, exactly as
+// deadCodeRoute, codeQualityRoute, entityResolutionRoute, and codeIntelRoute
+// above adapt theirs: same former-switch arms, same delegation position,
+// same dirgate reason for living in this file. compose_replatforming_plan
+// and get_replatforming_rollups moved to the sibling replatforming child,
+// reached through the replatformingRoute adapter in dispatch_iac.go.
+// list_aws_runtime_drift_findings stays in the switch below rather than
+// joining either family — it builds its body from its own root helper in
+// dispatch_iac.go that no tool in either child package shares.
+func iacManagementRoute(toolName string, args map[string]any) (*routecontract.Request, bool) {
+	return adaptChildRoute(iacmanagementtools.Route(toolName, routecontract.Arguments(args)))
+}

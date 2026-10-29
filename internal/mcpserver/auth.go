@@ -1,0 +1,176 @@
+package mcpserver
+
+// Edge authentication, adapted from go/internal/mcp/transport_auth.go and
+// go/internal/query/querycontract/unauthorized.go at 9922b49. The 401 body,
+// headers, content type, envelope negotiation, and correlation-id behavior
+// are byte-identical to core's WriteUnauthorized; the WWW-Authenticate
+// challenge is the bare Bearer challenge (the destination wires no OAuth
+// discovery). The credential model differs by necessity and is recorded in
+// docs/parity.md: the edge refuses a headerless request, binds SSE sessions
+// to the presenting principal, and forwards the caller credential verbatim
+// to core on every dispatch, where core remains the admission authority.
+// A constant-time shared-key comparison recognizes the deployment key as
+// the "shared" principal for stable session binding. See docs/parity.md.
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// principalContextKey carries the edge principal through the request.
+type principalContextKey struct{}
+
+// withPrincipal returns ctx carrying principal as the edge identity.
+func withPrincipal(ctx context.Context, principal string) context.Context {
+	return context.WithValue(ctx, principalContextKey{}, principal)
+}
+
+// principalKey returns the edge principal on ctx, or "" when the request
+// entered without transport auth (escape-hatch mode) or failed it.
+func principalKey(ctx context.Context) string {
+	principal, ok := ctx.Value(principalContextKey{}).(string)
+	if !ok {
+		return ""
+	}
+	return principal
+}
+
+// edgeAuth checks one HTTP request's credential. It returns the principal to
+// bind and whether the request may proceed. A missing Authorization header
+// is refused: the edge never serves a headerless MCP request. A present
+// credential is recognized as the "shared" principal when it constant-time
+// matches the configured deployment key; any other present credential passes
+// with a stable opaque principal, and core decides admission when the call
+// dispatches. The credential itself is never logged and never leaves the
+// process except forwarded to core on dispatch.
+func edgeAuth(sharedKey, authHeader string) (string, bool) {
+	credential := strings.TrimSpace(authHeader)
+	if credential == "" {
+		return "", false
+	}
+	if sharedKey != "" && subtle.ConstantTimeCompare([]byte(credential), []byte("Bearer "+sharedKey)) == 1 {
+		return "shared", true
+	}
+	sum := sha256.Sum256([]byte(credential))
+	return "fwd:" + hex.EncodeToString(sum[:]), true
+}
+
+// EdgeAuthMiddleware enforces the edge credential check on the MCP HTTP
+// transport: without an Authorization header the request is refused with the
+// core-identical 401 before the body is decoded. sharedKey is the deployment
+// key ESHU_API_KEY; empty disables the shared fast path but a present
+// credential still passes to core for admission.
+func EdgeAuthMiddleware(sharedKey string, logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			principal, ok := edgeAuth(sharedKey, r.Header.Get("Authorization"))
+			if !ok {
+				writeUnauthorized(w, r)
+				if logger != nil {
+					logger.Warn("mcp transport request without credential refused",
+						"method", r.Method, "path", r.URL.Path)
+				}
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), principal)))
+		})
+	}
+}
+
+// writeJSON writes one JSON response with the core content type and encoder
+// settings: application/json with charset, HTML escaping off, trailing
+// newline.
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(value); err != nil {
+		return
+	}
+}
+
+// acceptsEnvelope reports whether the caller asked for the canonical eshu
+// envelope, mirroring core's content negotiation.
+func acceptsEnvelope(r *http.Request) bool {
+	return r != nil && strings.Contains(r.Header.Get("Accept"), "application/eshu.envelope+json")
+}
+
+// correlationID returns the caller's correlation id when it passed one, or a
+// fresh random one. It mirrors core's DocumentationCorrelationID.
+func correlationID(r *http.Request) string {
+	for _, header := range []string{"X-Correlation-ID", "X-Request-ID"} {
+		if value := strings.TrimSpace(r.Header.Get(header)); value != "" {
+			return value
+		}
+	}
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
+	}
+	return hex.EncodeToString(raw[:])
+}
+
+// writeUnauthorized writes the 401 refusal byte-identical in shape to
+// core's: the bare Bearer challenge, the same status, content type, and JSON
+// body with a correlation id, in envelope form when the caller asked for the
+// envelope and in the plain error_code form otherwise.
+func writeUnauthorized(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("WWW-Authenticate", "Bearer")
+	if acceptsEnvelope(r) {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{
+			"data":  nil,
+			"truth": nil,
+			"error": map[string]any{
+				"code":           "unauthenticated",
+				"message":        "authentication is required",
+				"correlation_id": correlationID(r),
+			},
+		})
+		return
+	}
+	writeJSON(w, http.StatusUnauthorized, map[string]string{
+		"error_code":     "unauthenticated",
+		"message":        "authentication is required",
+		"correlation_id": correlationID(r),
+	})
+}
+
+// writeForbiddenSessionMismatch writes the 403 a POST /mcp/message carrying
+// a valid credential into an SSE session another principal opened receives.
+// The body matches core's session-hijack refusal exactly.
+func writeForbiddenSessionMismatch(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	if err := json.NewEncoder(w).Encode(jsonrpcResponse{
+		JSONRPC: "2.0",
+		Error:   &jsonrpcError{Code: -32001, Message: "credential does not match the session owner"},
+	}); err != nil {
+		return
+	}
+}
+
+// RequireCredentialSource is the destination's "no silent open mode" gate,
+// mirroring requireMCPHTTPCredentialSource: an HTTP transport with no
+// credential posture refuses to start unless the operator explicitly sets
+// the loopback escape hatch.
+func RequireCredentialSource(sharedKeyConfigured, allowUnauthenticated bool) error {
+	if sharedKeyConfigured || allowUnauthenticated {
+		return nil
+	}
+	return ErrNoCredentialSource
+}
+
+// errNoCredentialSource is the actionable boot refusal when the server would
+// otherwise start with no credential posture.
+var ErrNoCredentialSource = errors.New("MCP HTTP transport has no credential posture: set ESHU_API_KEY, or explicitly set ESHU_MCP_ALLOW_UNAUTHENTICATED=true for loopback/dev use only (never expose this port publicly with the escape hatch set)")

@@ -2,15 +2,15 @@
   "contract_version": "v1",
   "source": {
     "repo": "github.com/eshu-hq/eshu",
-    "commit": "e4c385f493494ed9d6c7f192b04ce0255361f621",
+    "commit": "9922b492d8a3a25ef87b39d38864b36ff522a6ce",
     "census_test": "go/internal/mcp/tool_registry_census_test.go",
-    "census_count_constant": 168,
+    "census_count_constant": 169,
     "ownership_map": "go/cmd/mcp-server/CUTOVER_OWNERSHIP.md",
-    "ownership_map_sha256": "71b005ee7305ca0768f38694ac6de237901d963df75d4077dd57e189bfadc89f",
+    "ownership_map_sha256": "1daf8a6d7637981a8db8d08485fad77561c4749bbd794d3c9671d79bfe7a85df",
     "note": "Tool order is part of the contract and must stay byte-stable with the source census."
   },
   "registry": {
-    "tool_count": 168,
+    "tool_count": 169,
     "tool_order": [
       "find_code",
       "find_symbol",
@@ -179,7 +179,8 @@
       "ask",
       "list_relationship_edges",
       "list_repository_files",
-      "list_runtime_version_declarations"
+      "list_runtime_version_declarations",
+      "search_dockerfile_installs"
     ]
   },
   "router_surface": {

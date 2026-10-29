@@ -1,0 +1,28 @@
+package dispatch
+
+import (
+	"github.com/eshu-hq/eshu-mcp/internal/routecontract"
+)
+
+func semanticSearchRoute(toolName string, args map[string]any) (*routecontract.Request, bool) {
+	if toolName != "search_semantic_context" {
+		return nil, false
+	}
+	return &routecontract.Request{
+		Method: "POST",
+		Path:   "/api/v0/search/semantic",
+		Body: map[string]any{
+			"repo_id":      str(args, "repo_id"),
+			"query":        str(args, "query"),
+			"mode":         str(args, "mode"),
+			"limit":        intOr(args, "limit", 0),
+			"timeout_ms":   intOr(args, "timeout_ms", 0),
+			"service_id":   str(args, "service_id"),
+			"workload_id":  str(args, "workload_id"),
+			"environment":  str(args, "environment"),
+			"source_kinds": stringSlice(args, "source_kinds"),
+			"languages":    stringSlice(args, "languages"),
+			"rerank":       boolOr(args, "rerank", false),
+		},
+	}, true
+}

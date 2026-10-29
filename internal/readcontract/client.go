@@ -2,6 +2,7 @@ package readcontract
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,12 +79,82 @@ type Client struct {
 	http *http.Client
 }
 
-// NewClient builds a Client from cfg.
+// NewClient builds a Client from cfg. It never follows redirects: no
+// MCP-reachable route redirects on purpose, and following one could carry
+// the Authorization header somewhere the route builder did not intend.
 func NewClient(cfg Config) *Client {
 	return &Client{
-		cfg:  cfg,
-		http: &http.Client{Timeout: cfg.Timeout},
+		cfg: cfg,
+		http: &http.Client{
+			Timeout: cfg.Timeout,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
+}
+
+// RawRequest is one dispatch request: the resolved method, path, query, and
+// JSON body for a versioned read-contract route.
+type RawRequest struct {
+	Method string
+	Path   string
+	Query  map[string]string
+	Body   any
+}
+
+// DoRaw sends one dispatch request and returns the core status and body
+// unread and unjudged: the dispatch boundary parses envelopes, budgets the
+// rendered result, and types errors itself, exactly like the in-tree runner
+// it replaces. authHeader is the caller's credential verbatim (for example
+// "Bearer ..."); it is forwarded untouched and never logged. A non-empty
+// body is sent as JSON with the matching content type.
+func (c *Client) DoRaw(ctx context.Context, route RawRequest, authHeader string) (int, []byte, error) {
+	target := strings.TrimRight(c.cfg.BaseURL, "/") + route.Path
+	if len(route.Query) > 0 {
+		values := make(url.Values, len(route.Query))
+		for key, value := range route.Query {
+			values.Set(key, value)
+		}
+		target += "?" + values.Encode()
+	}
+	var bodyReader *strings.Reader
+	if route.Body != nil {
+		encoded, err := json.Marshal(route.Body)
+		if err != nil {
+			return 0, nil, fmt.Errorf("readcontract: encode body for %s %s: %w", route.Method, route.Path, err)
+		}
+		bodyReader = strings.NewReader(string(encoded))
+	}
+	var bodyIO io.Reader
+	if bodyReader != nil {
+		bodyIO = bodyReader
+	}
+	req, err := http.NewRequestWithContext(ctx, route.Method, target, bodyIO)
+	if err != nil {
+		return 0, nil, fmt.Errorf("readcontract: build request for %s %s: %w", route.Method, route.Path, err)
+	}
+	if route.Body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Accept", EnvelopeMIME)
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("readcontract: call %s %s: %w", route.Method, route.Path, err)
+	}
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			return
+		}
+	}()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, nil, fmt.Errorf("readcontract: read %s %s: %w", route.Method, route.Path, err)
+	}
+	return resp.StatusCode, raw, nil
 }
 
 // Do calls one read-contract route and returns its raw envelope body.

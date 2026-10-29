@@ -1,55 +1,25 @@
 package main
 
 import (
-	"encoding/json"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/eshu-hq/eshu-mcp/internal/resultshape"
+	"github.com/eshu-hq/eshu-mcp/internal/router"
 )
 
-func TestHealthReportsContract(t *testing.T) {
-	t.Parallel()
-
-	srv := newServer("https://core:8443")
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	rec := httptest.NewRecorder()
-	srv.routes().ServeHTTP(rec, req)
-
-	resp := rec.Result()
-	body, err := io.ReadAll(resp.Body)
-	if closeErr := resp.Body.Close(); closeErr != nil {
-		t.Fatalf("close /healthz body: %v", closeErr)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /healthz = %d, want 200", resp.StatusCode)
-	}
-	if err != nil {
-		t.Fatalf("read /healthz body: %v", err)
-	}
-	var decoded map[string]any
-	if err := json.Unmarshal(body, &decoded); err != nil {
-		t.Fatalf("decode /healthz body: %v", err)
-	}
-	if decoded["contract"] != "v1" {
-		t.Errorf("/healthz contract = %v, want v1", decoded["contract"])
-	}
-	if decoded["tools"] != float64(168) {
-		t.Errorf("/healthz tools = %v, want 168", decoded["tools"])
-	}
-	if decoded["core"] != "https://core:8443" {
-		t.Errorf("/healthz core = %v, want the configured origin", decoded["core"])
-	}
+func quietLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 func TestRunRequiresCoreBaseURL(t *testing.T) {
 	t.Parallel()
 
-	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := run([]string{}, quiet)
+	err := run([]string{}, quietLogger())
 	if err == nil || !strings.Contains(err.Error(), "--core-base-url") {
 		t.Fatalf("run() error = %v, want a missing --core-base-url error", err)
 	}
@@ -58,32 +28,101 @@ func TestRunRequiresCoreBaseURL(t *testing.T) {
 func TestRunRejectsBadFlags(t *testing.T) {
 	t.Parallel()
 
-	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err := run([]string{"--no-such-flag"}, quiet)
+	err := run([]string{"--no-such-flag"}, quietLogger())
 	if err == nil {
-		t.Fatal("run() succeeded with an unknown flag, want an error")
+		t.Fatal("run() succeeded with an unknown flag, want the error")
 	}
 }
 
-func TestRunSurfacesListenFailure(t *testing.T) {
+func TestRunRefusesBootWithoutCredentialPosture(t *testing.T) {
+	t.Setenv("ESHU_API_KEY", "")
+	t.Setenv("ESHU_MCP_ALLOW_UNAUTHENTICATED", "")
+	err := run([]string{"--core-base-url", "https://core:8443"}, quietLogger())
+	if err == nil || !strings.Contains(err.Error(), "credential posture") {
+		t.Fatalf("run() error = %v, want the no-credential-posture refusal", err)
+	}
+}
+
+func TestRunRefusesRouterSurfaceWithoutRanker(t *testing.T) {
+	t.Setenv("ESHU_API_KEY", "test-key")
+	t.Setenv("ESHU_MCP_TOOL_SURFACE", "router")
+	t.Setenv("ESHU_MCP_ALLOW_UNAUTHENTICATED", "")
+	err := run([]string{"--core-base-url", "https://core:8443"}, quietLogger())
+	if err == nil || !strings.Contains(err.Error(), "ranker") {
+		t.Fatalf("run() error = %v, want the ranker-gate refusal", err)
+	}
+}
+
+func TestRunRefusesBadSurfaceAndShape(t *testing.T) {
+	t.Setenv("ESHU_API_KEY", "test-key")
+	t.Setenv("ESHU_MCP_TOOL_SURFACE", "bogus")
+	err := run([]string{"--core-base-url", "https://core:8443"}, quietLogger())
+	if err == nil || !strings.Contains(err.Error(), "ESHU_MCP_TOOL_SURFACE") {
+		t.Fatalf("run() error = %v, want the surface error", err)
+	}
+
+	t.Setenv("ESHU_MCP_TOOL_SURFACE", "")
+	t.Setenv("ESHU_MCP_RESULT_SHAPE", "bogus")
+	err = run([]string{"--core-base-url", "https://core:8443"}, quietLogger())
+	if err == nil || !strings.Contains(err.Error(), "ESHU_MCP_RESULT_SHAPE") {
+		t.Fatalf("run() error = %v, want the shape error", err)
+	}
+}
+
+func TestRunRefusesNonHTTPTransport(t *testing.T) {
+	t.Setenv("ESHU_API_KEY", "test-key")
+	t.Setenv("ESHU_MCP_TRANSPORT", "stdio")
+	err := run([]string{"--core-base-url", "https://core:8443"}, quietLogger())
+	if err == nil || !strings.Contains(err.Error(), "not supported") {
+		t.Fatalf("run() error = %v, want the transport refusal", err)
+	}
+}
+
+func TestIsTruthy(t *testing.T) {
 	t.Parallel()
 
-	occupant, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("occupy a test port: %v", err)
-	}
-	defer func() {
-		if err := occupant.Close(); err != nil {
-			t.Errorf("release the test port: %v", err)
+	for _, truthy := range []string{"1", "true", "t", "yes", "y", "on", " TRUE "} {
+		if !isTruthy(truthy) {
+			t.Errorf("isTruthy(%q) = false, want true", truthy)
 		}
-	}()
+	}
+	for _, falsy := range []string{"", "0", "false", "no", "dev"} {
+		if isTruthy(falsy) {
+			t.Errorf("isTruthy(%q) = true, want false", falsy)
+		}
+	}
+}
 
-	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
-	err = run([]string{
-		"--addr", occupant.Addr().String(),
-		"--core-base-url", "https://core:8443",
-	}, quiet)
-	if err == nil {
-		t.Fatal("run() succeeded on an occupied address, want the listen error")
+func TestBuildServerWiring(t *testing.T) {
+	server, extra, summary := buildServer(quietLogger(), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "")
+	if summary.surface != router.SurfaceFull {
+		t.Errorf("surface = %q, want the full default", summary.surface)
+	}
+	if summary.advertised != 169 {
+		t.Errorf("advertised = %d, want the 169-tool registry", summary.advertised)
+	}
+	if summary.listBytes <= 0 {
+		t.Error("tools/list bytes is not positive")
+	}
+	mux := server.Handler(extra)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /healthz = %d, want 200", rec.Code)
+	}
+	// The edge requires the credential even though construction succeeded.
+	anon := httptest.NewRequest(http.MethodPost, "/mcp/message", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
+	anonRec := httptest.NewRecorder()
+	mux.ServeHTTP(anonRec, anon)
+	if anonRec.Code != http.StatusUnauthorized {
+		t.Errorf("headerless tools/call = %d, want 401", anonRec.Code)
+	}
+}
+
+func TestBuildServerProductionProfile(t *testing.T) {
+	_, _, summary := buildServer(quietLogger(), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "production")
+	if summary.advertised != 169-4 {
+		t.Errorf("production advertised = %d, want 169 minus the 4 hidden tools", summary.advertised)
 	}
 }

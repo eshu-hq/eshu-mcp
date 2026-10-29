@@ -1,6 +1,7 @@
 package readcontract
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -18,6 +19,41 @@ func writeResponse(t *testing.T, w io.Writer, s string) {
 	t.Helper()
 	if _, err := io.WriteString(w, s); err != nil {
 		t.Errorf("write test response: %v", err)
+	}
+}
+
+// failCloseBody reads normally but reports a close error, proving DoRaw
+// treats a body-close failure as best-effort: the bytes already read win.
+type failCloseBody struct{ *bytes.Reader }
+
+// Close reports a close failure for failCloseBody.
+func (failCloseBody) Close() error { return errors.New("close boom") }
+
+// roundTripFunc adapts a function to http.RoundTripper for transport stubs.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+// RoundTrip runs the stubbed round trip.
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+// TestDoRawToleratesCloseError proves a body-close failure does not fail the
+// call: the status and bytes already read are still returned.
+func TestDoRawToleratesCloseError(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient(DefaultConfig("https://core:8443", ""))
+	client.http = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       failCloseBody{bytes.NewReader([]byte(`{"data":{}}`))},
+		}, nil
+	})}
+	status, raw, err := client.DoRaw(context.Background(), RawRequest{Method: "GET", Path: "/api/v0/repos"}, "Bearer [REDACTED]")
+	if err != nil {
+		t.Fatalf("DoRaw() error = %v, want nil despite the close failure", err)
+	}
+	if status != http.StatusOK || string(raw) != `{"data":{}}` {
+		t.Errorf("DoRaw() = (%d, %s), want (200, {\"data\":{}})", status, raw)
 	}
 }
 
@@ -219,5 +255,77 @@ func TestDoReadsFullBody(t *testing.T) {
 	}
 	if string(body) != payload {
 		t.Errorf("Do() body = %q, want %q", body, payload)
+	}
+}
+
+func TestDoRawForwardsCredentialVerbatim(t *testing.T) {
+	t.Parallel()
+
+	var seenAuth, seenAccept, seenCT, seenBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenAuth = r.Header.Get("Authorization")
+		seenAccept = r.Header.Get("Accept")
+		seenCT = r.Header.Get("Content-Type")
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "read failed", http.StatusInternalServerError)
+			return
+		}
+		seenBody = string(raw)
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"data":{},"truth":null,"error":null}`)); err != nil {
+			return
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient(DefaultConfig(srv.URL, ""))
+	status, body, err := client.DoRaw(context.Background(), RawRequest{
+		Method: http.MethodPost,
+		Path:   "/api/v0/repos/r/files/read",
+		Query:  map[string]string{"limit": "10"},
+		Body:   map[string]any{"path": "go.mod"},
+	}, "Bearer scoped-token-abc")
+	if err != nil {
+		t.Fatalf("DoRaw() error = %v, want nil", err)
+	}
+	if status != http.StatusOK {
+		t.Errorf("DoRaw() status = %d, want 200", status)
+	}
+	if !strings.Contains(string(body), `"data"`) {
+		t.Errorf("DoRaw() body = %q, want the raw envelope bytes", body)
+	}
+	if seenAuth != "Bearer scoped-token-abc" {
+		t.Errorf("Authorization = %q, want the caller credential verbatim", seenAuth)
+	}
+	if seenAccept != "application/eshu.envelope+json" {
+		t.Errorf("Accept = %q, want the envelope MIME", seenAccept)
+	}
+	if seenCT != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", seenCT)
+	}
+	if seenBody != `{"path":"go.mod"}` {
+		t.Errorf("body = %q, want the JSON request", seenBody)
+	}
+}
+
+func TestDoRawDoesNotFollowRedirects(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://elsewhere.example/steal", http.StatusTemporaryRedirect)
+	}))
+	defer srv.Close()
+
+	client := NewClient(DefaultConfig(srv.URL, ""))
+	status, _, err := client.DoRaw(context.Background(), RawRequest{
+		Method: http.MethodGet,
+		Path:   "/api/v0/repos//summary",
+	}, "Bearer k")
+	if err != nil {
+		t.Fatalf("DoRaw() error = %v, want nil", err)
+	}
+	if status != http.StatusTemporaryRedirect {
+		t.Errorf("DoRaw() status = %d, want the un-followed 307", status)
 	}
 }

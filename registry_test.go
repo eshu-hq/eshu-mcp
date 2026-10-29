@@ -80,8 +80,8 @@ func TestRegistryBoundaryNames(t *testing.T) {
 	if got[0] != "find_code" {
 		t.Errorf("ToolNames()[0] = %q, want %q", got[0], "find_code")
 	}
-	if last := got[len(got)-1]; last != "list_runtime_version_declarations" {
-		t.Errorf("ToolNames()[last] = %q, want %q", last, "list_runtime_version_declarations")
+	if last := got[len(got)-1]; last != "search_dockerfile_installs" {
+		t.Errorf("ToolNames()[last] = %q, want %q", last, "search_dockerfile_installs")
 	}
 }
 
