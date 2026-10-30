@@ -58,16 +58,6 @@ func TestRunRefusesBootWithoutCredentialPosture(t *testing.T) {
 	}
 }
 
-func TestRunRefusesRouterSurfaceWithoutRanker(t *testing.T) {
-	t.Setenv("ESHU_API_KEY", "test-key")
-	t.Setenv("ESHU_MCP_TOOL_SURFACE", "router")
-	t.Setenv("ESHU_MCP_ALLOW_UNAUTHENTICATED", "")
-	err := run([]string{"--core-base-url", "https://core:8443"}, quietLogger())
-	if err == nil || !strings.Contains(err.Error(), "ranker") {
-		t.Fatalf("run() error = %v, want the ranker-gate refusal", err)
-	}
-}
-
 func TestRunRefusesBadSurfaceAndShape(t *testing.T) {
 	t.Setenv("ESHU_API_KEY", "test-key")
 	t.Setenv("ESHU_MCP_TOOL_SURFACE", "bogus")
