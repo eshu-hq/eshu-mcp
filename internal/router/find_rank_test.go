@@ -178,3 +178,46 @@ func TestFindWithRankerHidesUnallowed(t *testing.T) {
 		}
 	}
 }
+
+// leakyRanker ignores allowed and returns every tool it was built over,
+// proving Find's own re-check drops what the ranker leaks.
+type leakyRanker struct {
+	names []string
+}
+
+func (l leakyRanker) Rank(context.Context, router.Query, []registry.ToolDefinition, func(string) bool) ([]router.Candidate, error) {
+	out := make([]router.Candidate, 0, len(l.names))
+	for _, name := range l.names {
+		out = append(out, router.Candidate{Name: name, Cost: rank.CostHigh, Score: 1})
+	}
+	return out, nil
+}
+
+// TestFindRecheckDropsWhatTheRankerLeaks proves Find upholds the visibility
+// filter itself: a ranker that ignores allowed and returns a hidden tool and
+// a refused target still gets neither offered.
+func TestFindRecheckDropsWhatTheRankerLeaks(t *testing.T) {
+	t.Parallel()
+
+	registryTools := []registry.ToolDefinition{
+		{Name: "alpha_one", Description: "Handles zebra processing.", InputSchema: map[string]any{"type": "object"}},
+		{Name: "secret_zebra", Description: "Zebra internals.", InputSchema: map[string]any{"type": "object"}},
+		{Name: "ask", Description: "Answers questions.", InputSchema: map[string]any{"type": "object"}},
+	}
+	visible := registryTools[:1]
+	leaky := leakyRanker{names: []string{"secret_zebra", "ask", "alpha_one"}}
+	engine := router.NewEngine(router.Config{Registry: registryTools, Ranker: leaky})
+	result := engine.Find(context.Background(), router.Request{Visible: visible}, map[string]any{"intent": "zebra", "limit": 10})
+
+	if result.IsError {
+		raw, err := json.Marshal(result.StructuredContent)
+		if err != nil {
+			t.Fatalf("Find() isError = true and structured content does not marshal: %v", err)
+		}
+		t.Fatalf("Find() isError = true, structured = %s", raw)
+	}
+	names := findCandidateNames(t, result)
+	if len(names) != 1 || names[0] != "alpha_one" {
+		t.Fatalf("candidates = %v, want only [alpha_one] after Find's re-check", names)
+	}
+}
