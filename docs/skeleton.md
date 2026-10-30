@@ -23,8 +23,9 @@ independent build, test, and image steps.
 - `internal/dispatch/`: the 27 ported tool families plus the response
   budget, envelope rendering, and sweep-verified route resolutions.
 - `internal/router/`: request validation, surface advertisement, and the
-  `call_tool`/`find_tool` engine (`find_tool` answers ranker-unavailable
-  until the ranker increment).
+  `call_tool`/`find_tool` engine with the catalog-free lexical ranker
+  (`internal/router/rank`, built from the versioned registry tools alone;
+  a nil ranker still answers ranker-unavailable).
 - `internal/mcpserver/`: the HTTP transport (`GET /health`, `GET /sse`,
   `POST /mcp/message`) with edge auth that refuses credential-less callers
   and otherwise forwards the caller credential verbatim to core.

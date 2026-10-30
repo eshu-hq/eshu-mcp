@@ -25,8 +25,8 @@ type Host struct {
 	// directly or through NewRanker and Prepare; while it is nil find_tool
 	// answers mcp_router_ranker_unavailable.
 	Ranker Ranker
-	// NewRanker, when set, builds Ranker once in Prepare. The ranker
-	// increment wires the lexical ranker here.
+	// NewRanker, when set, builds Ranker once in Prepare. The command wires
+	// the catalog-free lexical ranker (internal/router/rank) here.
 	NewRanker RankerBuilder
 
 	// logger is the Prepare-supplied logger the ranker increment will use.

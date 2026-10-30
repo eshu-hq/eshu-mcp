@@ -16,6 +16,7 @@ import (
 	"github.com/eshu-hq/eshu-mcp/internal/readcontract"
 	"github.com/eshu-hq/eshu-mcp/internal/resultshape"
 	"github.com/eshu-hq/eshu-mcp/internal/router"
+	"github.com/eshu-hq/eshu-mcp/internal/router/rank"
 )
 
 // version identifies this build in initialize serverInfo. Release wiring
@@ -73,14 +74,6 @@ func run(args []string, logOut *slog.Logger) error {
 	if err := mcpserver.RequireCredentialSource(apiKey != "", allowUnauthenticated); err != nil {
 		return err
 	}
-	// A surface that advertises find_tool as its entry point with no ranker
-	// is an error, so a misconfigured deployment fails at startup instead of
-	// answering mcp_router_ranker_unavailable on its first request. The full
-	// surface still serves: find_tool stays callable there.
-	if surface == router.SurfaceRouter || surface == router.SurfaceCoreRouter {
-		return fmt.Errorf("eshu-mcp: tool surface %q serves find_tool, but no find_tool ranker is built yet (ranker increment under #9498)", surface)
-	}
-
 	// Fail fast when the embedded registry did not load: serving health
 	// with an empty contract and zero tools would be a false-green signal.
 	if err := eshuregistry.LoadError(); err != nil {
@@ -117,9 +110,9 @@ type serverSummary struct {
 
 // buildServer wires the registry, dispatch boundary, transport, and auth
 // without binding a listener, so tests can prove the wiring serves the
-// pinned surface. It fails closed on a router surface without a ranker.
-// The core client arrives built: run() rejects an invalid config before
-// any listener starts.
+// pinned surface. It wires the catalog-free lexical ranker, so the router
+// and core_router surfaces boot with find_tool ranking. The core client
+// arrives built: run() rejects an invalid config before any listener starts.
 func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, apiKey string, surface router.Surface, shape resultshape.Mode, profile string) (*mcpserver.Server, *http.ServeMux, serverSummary) {
 	tools := eshuregistry.Definitions()
 	if mcpserver.IsProductionProfile(profile) {
@@ -144,6 +137,9 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 	opts := []mcpserver.ServerOption{
 		mcpserver.WithToolSurface(surface),
 		mcpserver.WithResultShape(shape),
+		mcpserver.WithRouterRanker(func(tools []eshuregistry.ToolDefinition) router.Ranker {
+			return rank.New(tools)
+		}),
 	}
 	if apiKey != "" {
 		opts = append(opts, mcpserver.WithTransportAuth(mcpserver.EdgeAuthMiddleware(apiKey, logOut)))

@@ -1,14 +1,15 @@
 package router
 
 // Find_tool request bounds and ranker contract, adapted from
-// go/internal/mcp/router/find.go and contract.go at 9922b49. This increment
-// wires no ranker — the lexical ranker and its catalog entries ride the next
-// increment — so every find_tool request that passes validation answers the
-// exact mcp_router_ranker_unavailable error core answers on a ranker-less
-// server, and core refuses to start the router surfaces that way. The
-// validation order (schema, request bounds, blank intent) and every bound
+// go/internal/mcp/router/find.go and contract.go at 9922b49. The catalog-free
+// lexical ranker (internal/router/rank) builds from the versioned registry
+// tools alone: a nil Ranker still answers the exact
+// mcp_router_ranker_unavailable error core answers on a ranker-less server.
+// The validation order (schema, request bounds, blank intent) and every bound
 // are unchanged, so a malformed find_tool fails identically with or without
-// a ranker. See docs/parity.md.
+// a ranker. Admission checks stay in core: the destination forwards the
+// caller credential so core enforces admission per call, and allowed carries
+// only the profile-visibility filter. See docs/parity.md.
 
 import (
 	"context"
@@ -78,8 +79,8 @@ type Candidate struct {
 
 // Ranker orders registered tools against a Query. Implementations must be
 // deterministic: the same inputs produce the same ordered result. The
-// lexical ranker port lands with the next increment; until then the field
-// stays nil and find_tool answers ranker-unavailable.
+// catalog-free lexical ranker (internal/router/rank) implements this; a nil
+// Ranker makes find_tool answer ranker-unavailable.
 type Ranker interface {
 	// Rank returns at most q.Limit candidates, best first, drawn from tools.
 	// allowed reports whether the caller may see and call a tool by name.
@@ -90,20 +91,96 @@ type Ranker interface {
 // per server, at startup.
 type RankerBuilder func(tools []registry.ToolDefinition) Ranker
 
-// Find serves find_tool: it validates the request, then answers
-// mcp_router_ranker_unavailable, exactly as core answers on a ranker-less
-// server. The ranker increment extends this past the gate.
-func (e *Engine) Find(_ context.Context, _ Request, args map[string]any) ToolResult {
+// candidateView is the wire form of one find_tool candidate.
+type candidateView struct {
+	Name        string         `json:"name"`
+	Why         string         `json:"why"`
+	Cost        string         `json:"cost"`
+	InputSchema any            `json:"inputSchema"`
+	Example     map[string]any `json:"example"`
+	Score       float64        `json:"score"`
+}
+
+// findResponse is the find_tool structured result: the ranked candidates,
+// best first. Error outcomes use the {data, truth, error} envelope instead.
+type findResponse struct {
+	Candidates []candidateView `json:"candidates"`
+}
+
+// Find serves find_tool: it validates the request, ranks the tools the query
+// profile allows, and returns the ranked candidates. It never offers a
+// profile-hidden tool, find_tool, call_tool, or ask. Without a ranker it
+// answers mcp_router_ranker_unavailable, exactly as core answers on a
+// ranker-less server.
+func (e *Engine) Find(ctx context.Context, req Request, args map[string]any) ToolResult {
 	if errs, truncated := ValidateArgumentsDetail(toolSchema(FindToolName), args); len(errs) != 0 {
 		return invalidArgumentsResult(FindToolName, errs, truncated)
 	}
 	if errs, truncated := boundFindRequest(args); len(errs) != 0 {
 		return invalidArgumentsResult(FindToolName, errs, truncated)
 	}
-	if parseQuery(args).Intent == "" {
+	q := parseQuery(args)
+	if q.Intent == "" {
 		return invalidArgumentsResult(FindToolName, []FieldError{{Path: "intent", Keyword: "minLength", Message: "must not be blank"}}, false)
 	}
-	return errorResult("mcp_router_ranker_unavailable", "find_tool has no ranker configured on this server", nil)
+	if e.ranker == nil {
+		return errorResult("mcp_router_ranker_unavailable", "find_tool has no ranker configured on this server", nil)
+	}
+
+	allowed := e.allowedFunc(e.rankable(req.Visible))
+	// Hand the ranker the caller's visible slice unchanged on every call, so
+	// the ranker can key its index on it; allowed carries the per-call filter.
+	ranked, err := e.ranker.Rank(ctx, q, req.Visible, allowed)
+	if err != nil {
+		e.logger.Warn("mcp router: ranker failed", "error", err)
+		return errorResult("mcp_router_rank_failed", "find_tool could not rank tools: "+err.Error(), nil)
+	}
+
+	resp := findResponse{Candidates: make([]candidateView, 0, len(ranked))}
+	for _, c := range ranked {
+		// Re-check the ranker's output: a ranker that ignores allowed must
+		// still not leak a tool, and the limit holds whatever it returns.
+		if !allowed(c.Name) || len(resp.Candidates) >= q.Limit {
+			continue
+		}
+		resp.Candidates = append(resp.Candidates, e.view(c))
+	}
+	return jsonResult(resp, false)
+}
+
+// rankable is the visible set as a name lookup.
+func (e *Engine) rankable(visible []registry.ToolDefinition) map[string]bool {
+	names := make(map[string]bool, len(visible))
+	for _, tool := range visible {
+		names[tool.Name] = true
+	}
+	return names
+}
+
+// allowedFunc builds the per-call filter: visible under the query profile,
+// registered, and not a refused target. Admission stays in core, which
+// enforces it per call at dispatch; this filter only decides what find_tool
+// may offer.
+func (e *Engine) allowedFunc(visible map[string]bool) func(string) bool {
+	return func(name string) bool {
+		if refusedTargets[name] || !visible[name] {
+			return false
+		}
+		_, registered := e.registry[name]
+		return registered
+	}
+}
+
+func (e *Engine) view(c Candidate) candidateView {
+	schema := c.InputSchema
+	if schema == nil {
+		schema = e.registry[c.Name].InputSchema
+	}
+	example := c.Example
+	if example == nil {
+		example = e.examples[c.Name]
+	}
+	return candidateView{Name: c.Name, Why: c.Why, Cost: c.Cost, InputSchema: schema, Example: example, Score: c.Score}
 }
 
 // boundFindRequest enforces MaxIntentBytes, MaxAnchorValueBytes, and the
@@ -147,8 +224,7 @@ func anchorString(anchors map[string]any, key string) string {
 	return value
 }
 
-// parseQuery reads a find_tool request that already passed validation. It
-// stays for the ranker increment; the ranker-less gate above answers first.
+// parseQuery reads a find_tool request that already passed validation.
 func parseQuery(args map[string]any) Query {
 	q := Query{Limit: DefaultLimit}
 	if intent, ok := args["intent"].(string); ok {
