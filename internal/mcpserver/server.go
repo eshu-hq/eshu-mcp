@@ -89,8 +89,9 @@ func WithTransportAuth(middleware func(http.Handler) http.Handler) ServerOption 
 }
 
 // WithRouterRanker sets the builder for the find_tool ranker. Without this
-// option find_tool answers mcp_router_ranker_unavailable; the command refuses
-// to start that way on the router and core_router surfaces.
+// option find_tool answers mcp_router_ranker_unavailable. The command wires
+// the catalog-free lexical ranker, so the router and core_router surfaces
+// boot with find_tool ranking.
 func WithRouterRanker(build router.RankerBuilder) ServerOption {
 	return func(s *Server) {
 		s.router.NewRanker = build
