@@ -71,3 +71,36 @@ func TestStringRejectsWrongType(t *testing.T) {
 		t.Errorf("String(count) = %q, want empty", got)
 	}
 }
+
+func TestOptionalFloatVariants(t *testing.T) {
+	t.Parallel()
+
+	args := Arguments{"f64": 1.5, "f32": float32(2.5), "i": 3, "i64": int64(4), "s": "x"}
+	for key, want := range map[string]float64{"f64": 1.5, "f32": 2.5, "i": 3, "i64": 4} {
+		got, ok := args.OptionalFloat(key)
+		if !ok || got != want {
+			t.Fatalf("%s = %v,%v want %v,true", key, got, ok, want)
+		}
+	}
+	if _, ok := args.OptionalFloat("s"); ok {
+		t.Fatal("string accepted")
+	}
+	if _, ok := args.OptionalFloat("missing"); ok {
+		t.Fatal("missing accepted")
+	}
+}
+
+func TestIntOrBoolOrBranches(t *testing.T) {
+	t.Parallel()
+
+	args := Arguments{"i": 3, "i64": int64(4), "f": 2.0, "s": "x", "b": true}
+	if args.IntOr("i", 9) != 3 || args.IntOr("i64", 9) != 4 || args.IntOr("f", 9) != 2 || args.IntOr("s", 9) != 9 || args.IntOr("missing", 9) != 9 {
+		t.Fatal("IntOr wrong")
+	}
+	if !args.BoolOr("b", false) || args.BoolOr("s", true) != true || args.BoolOr("missing", true) != true {
+		t.Fatal("BoolOr wrong")
+	}
+	if got := args.StringSlice("s"); got != nil {
+		t.Fatalf("StringSlice scalar = %#v", got)
+	}
+}

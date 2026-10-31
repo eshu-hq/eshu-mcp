@@ -28,7 +28,7 @@ env:
   # First measured baseline: the walking-skeleton packages cover 80.3% of
   # statements (`go test -race -covermode=atomic`, 2026-10-29). The floor
   # may only rise toward 90 as tests land (issue #11). Never lower it.
-  COVERAGE_FLOOR: 80.3
+  COVERAGE_FLOOR: 90
   GOLANGCI_VERSION: v2.12.2
   GOSEC_VERSION: v2.30.0
   GOVULNCHECK_VERSION: v1.9.0

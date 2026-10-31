@@ -106,3 +106,15 @@ func wireEqual(got, want map[string]any) bool {
 	}
 	return reflect.DeepEqual(gotNorm, wantNorm)
 }
+
+func TestStringValuesFilters(t *testing.T) {
+	t.Parallel()
+
+	args := routecontract.Arguments{"ks": []any{"a", "", 7}}
+	if got := stringValues(args, "ks"); len(got) != 1 || got[0] != "a" {
+		t.Fatalf(" = %#v", got)
+	}
+	if got := stringValues(args, "missing"); len(got) != 0 {
+		t.Fatalf("missing = %#v", got)
+	}
+}
