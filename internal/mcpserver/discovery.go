@@ -102,14 +102,6 @@ func DiscoveryConfigFromEnv(getenv func(string) string) DiscoveryConfig {
 	return cfg
 }
 
-// ResourceURISet reports whether the operator configured a resource URI at
-// all, valid or not. Transport auth is wired whenever any credential knob
-// is set (the monolith denies headerless requests once a source is
-// configured, even before discovery validity is decided).
-func (d DiscoveryConfig) ResourceURISet() bool {
-	return strings.TrimSpace(d.Resource) != ""
-}
-
 // Enabled reports whether this config serves discovery: a valid resource
 // URI and at least one issuer, mirroring the monolith's dual gate (valid
 // URI plus a metadata route that would actually resolve).

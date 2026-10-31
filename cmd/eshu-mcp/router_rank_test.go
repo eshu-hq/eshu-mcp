@@ -82,7 +82,7 @@ func TestBuildServerRouterSurfacesBootAndRank(t *testing.T) {
 		{router.SurfaceCoreRouter, 12},
 	} {
 		server, extra, summary := buildServer(quietLogger(), testClient(t), "https://core:8443",
-			"deploy-key", mcpserver.DiscoveryConfig{}, tc.surface, resultshape.Mode(""), "")
+			"deploy-key", mcpserver.DiscoveryConfig{}, true, tc.surface, resultshape.Mode(""), "")
 		if summary.surface != tc.surface {
 			t.Errorf("surface = %q, want %q", summary.surface, tc.surface)
 		}

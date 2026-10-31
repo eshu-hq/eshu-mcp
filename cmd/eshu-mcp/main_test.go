@@ -61,36 +61,30 @@ func TestRunRefusesBootWithoutCredentialPosture(t *testing.T) {
 	}
 }
 
-func TestRunBootsOnResourceURIAlone(t *testing.T) {
-	// The auth E2E stacks set ESHU_AUTH_RESOURCE_URI with an empty shared
-	// key and no escape hatch (eshu-hq/eshu-mcp#27): the monolith counted
-	// the URI as a credential source, so the satellite must boot there too.
-	// run() would then block serving, so prove the gate passes by driving
-	// buildServer with the same env instead.
-	t.Setenv("ESHU_API_KEY", "")
-	t.Setenv("ESHU_MCP_ALLOW_UNAUTHENTICATED", "")
-	t.Setenv("ESHU_SCOPED_TOKENS_FILE", "")
-	t.Setenv("ESHU_AUTH_RESOURCE_URI", "http://127.0.0.1:8080")
-	t.Setenv("ESHU_AUTH_AUTHORIZATION_SERVERS", "http://mock-oidc-idp:8080")
-	if !mcpserver.CredentialSourceConfigured(os.Getenv("ESHU_API_KEY"), os.Getenv("ESHU_SCOPED_TOKENS_FILE"), os.Getenv("ESHU_AUTH_RESOURCE_URI")) {
-		t.Fatal("resource-URI-only env reports no credential source")
-	}
+// e2eEnvGetter builds the getenv wireServer reads, so the tests below
+// drive the exact boot path run serves: a wiring break fails these tests
+// rather than hiding behind the unit-tested predicate.
+func e2eEnvGetter(pairs map[string]string) func(string) string {
+	return func(key string) string { return pairs[key] }
 }
 
-func TestBuildServerServesDiscoveryWhenEnabled(t *testing.T) {
-	disc := mcpserver.DiscoveryConfigFromEnv(func(key string) string {
-		switch key {
-		case "ESHU_AUTH_RESOURCE_URI":
-			return "http://127.0.0.1:8080"
-		case "ESHU_AUTH_AUTHORIZATION_SERVERS":
-			return "http://mock-oidc-idp:8080"
-		}
-		return ""
+// TestWireServerE2EEnvBootsAndServesDiscovery replays the auth E2E stacks
+// through the real boot path (eshu-hq/eshu-mcp#27): empty shared key, no
+// escape hatch, resource URI plus mock issuer set. The monolith booted
+// there, so wireServer must wire — not refuse — and serve the discovery
+// the scripted OAuth flow needs.
+func TestWireServerE2EEnvBootsAndServesDiscovery(t *testing.T) {
+	getenv := e2eEnvGetter(map[string]string{
+		"ESHU_API_KEY":                    "",
+		"ESHU_MCP_ALLOW_UNAUTHENTICATED":  "",
+		"ESHU_SCOPED_TOKENS_FILE":         "",
+		"ESHU_AUTH_RESOURCE_URI":          "http://127.0.0.1:8080",
+		"ESHU_AUTH_AUTHORIZATION_SERVERS": "http://mock-oidc-idp:8080",
 	})
-	if !disc.Enabled() {
-		t.Fatal("test discovery config reports disabled")
+	_, server, extra, err := wireServer([]string{"--core-base-url", "https://core:8443"}, getenv, quietLogger())
+	if err != nil {
+		t.Fatalf("wireServer() error = %v, want the E2E-env boot to wire", err)
 	}
-	server, extra, _ := buildServer(quietLogger(), testClient(t), "https://core:8443", "", disc, router.Surface(""), resultshape.Mode(""), "")
 	mux := server.Handler(extra)
 
 	// The scripted OAuth flow starts here: credential-less initialize must
@@ -120,6 +114,68 @@ func TestBuildServerServesDiscoveryWhenEnabled(t *testing.T) {
 	}
 	if !strings.Contains(body, `"authorization_servers":["http://mock-oidc-idp:8080"]`) {
 		t.Errorf("discovery document issuers wrong: %s", body)
+	}
+}
+
+// TestWireServerScopedFileOnlyDeniesHeaderless pins the fail-open fix:
+// a scoped-token file alone is a credential source, so the wired edge
+// must deny a headerless request (401, bare challenge, no discovery)
+// rather than serve open.
+func TestWireServerScopedFileOnlyDeniesHeaderless(t *testing.T) {
+	getenv := e2eEnvGetter(map[string]string{
+		"ESHU_SCOPED_TOKENS_FILE": "/run/secrets/tokens.json",
+	})
+	_, server, extra, err := wireServer([]string{"--core-base-url", "https://core:8443"}, getenv, quietLogger())
+	if err != nil {
+		t.Fatalf("wireServer() error = %v, want the scoped-file boot to wire", err)
+	}
+	mux := server.Handler(extra)
+	anon := httptest.NewRequest(http.MethodPost, "/mcp/message", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`))
+	anonRec := httptest.NewRecorder()
+	mux.ServeHTTP(anonRec, anon)
+	if anonRec.Code != http.StatusUnauthorized {
+		t.Fatalf("scoped-file-only headerless call = %d, want 401", anonRec.Code)
+	}
+	if challenge := anonRec.Header().Get("WWW-Authenticate"); challenge != mcpserver.BareChallenge {
+		t.Errorf("challenge = %q, want the bare challenge with no discovery", challenge)
+	}
+	docRec := httptest.NewRecorder()
+	mux.ServeHTTP(docRec, httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil))
+	if docRec.Code != http.StatusNotFound {
+		t.Errorf("GET discovery without URI = %d, want 404", docRec.Code)
+	}
+}
+
+// TestWireServerRefusesBootWithoutPosture proves the refusal at the wire
+// level too, so a gate regression fails here even if run() changes shape.
+func TestWireServerRefusesBootWithoutPosture(t *testing.T) {
+	getenv := e2eEnvGetter(map[string]string{})
+	_, _, _, err := wireServer([]string{"--core-base-url", "https://core:8443"}, getenv, quietLogger())
+	if err == nil || !strings.Contains(err.Error(), "credential posture") {
+		t.Fatalf("wireServer() error = %v, want the no-credential-posture refusal", err)
+	}
+}
+
+// TestBuildServerAuthEnforcedFlag pins the flag semantics directly: false
+// serves a headerless request open (escape-hatch-open with no source),
+// true denies it.
+func TestBuildServerAuthEnforcedFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		enforced bool
+		want     int
+	}{
+		{"open", false, http.StatusOK},
+		{"enforced", true, http.StatusUnauthorized},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server, extra, _ := buildServer(quietLogger(), testClient(t), "https://core:8443", "", mcpserver.DiscoveryConfig{}, tc.enforced, router.Surface(""), resultshape.Mode(""), "")
+			rec := httptest.NewRecorder()
+			server.Handler(extra).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/mcp/message", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"ping"}`)))
+			if rec.Code != tc.want {
+				t.Errorf("headerless call = %d, want %d", rec.Code, tc.want)
+			}
+		})
 	}
 }
 
@@ -164,7 +220,7 @@ func TestIsTruthy(t *testing.T) {
 }
 
 func TestBuildServerWiring(t *testing.T) {
-	server, extra, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", mcpserver.DiscoveryConfig{}, router.Surface(""), resultshape.Mode(""), "")
+	server, extra, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", mcpserver.DiscoveryConfig{}, true, router.Surface(""), resultshape.Mode(""), "")
 	if summary.surface != router.SurfaceFull {
 		t.Errorf("surface = %q, want the full default", summary.surface)
 	}
@@ -191,7 +247,7 @@ func TestBuildServerWiring(t *testing.T) {
 }
 
 func TestBuildServerProductionProfile(t *testing.T) {
-	_, _, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", mcpserver.DiscoveryConfig{}, router.Surface(""), resultshape.Mode(""), "production")
+	_, _, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", mcpserver.DiscoveryConfig{}, true, router.Surface(""), resultshape.Mode(""), "production")
 	if summary.advertised != 171-4 {
 		t.Errorf("production advertised = %d, want 171 minus the 4 hidden tools", summary.advertised)
 	}
@@ -207,7 +263,7 @@ func TestBuildServerReportsBuildVersion(t *testing.T) {
 	version = stamped
 	defer func() { version = previous }()
 
-	server, extra, _ := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", mcpserver.DiscoveryConfig{}, router.Surface(""), resultshape.Mode(""), "")
+	server, extra, _ := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", mcpserver.DiscoveryConfig{}, true, router.Surface(""), resultshape.Mode(""), "")
 	req := httptest.NewRequest(http.MethodPost, "/mcp/message",
 		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`))
 	req.Header.Set("Authorization", "Bearer deploy-key")

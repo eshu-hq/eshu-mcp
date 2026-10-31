@@ -54,6 +54,8 @@ func TestMetadataURLForResource(t *testing.T) {
 		{"loopback http", "http://127.0.0.1:8080", "http://127.0.0.1:8080/.well-known/oauth-protected-resource", true},
 		{"localhost http", "http://localhost:8080/mcp", "http://localhost:8080/.well-known/oauth-protected-resource/mcp", true},
 		{"public http rejected", "http://mcp.example.test", "", false},
+		{"ftp rejected", "ftp://mcp.example.test", "", false},
+		{"gopher rejected", "gopher://mcp.example.test/x", "", false},
 		{"no scheme", "mcp.example.test", "", false},
 		{"query rejected", "https://mcp.example.test/?a=b", "", false},
 		{"fragment rejected", "https://mcp.example.test/#f", "", false},
@@ -113,6 +115,86 @@ func TestChallengeValue(t *testing.T) {
 	want := `Bearer resource_metadata="https://mcp.example.test/.well-known/oauth-protected-resource", scope="openid profile email groups"`
 	if got != want {
 		t.Errorf("challenge = %q, want %q", got, want)
+	}
+	// Defense in depth: a metadata URL carrying a delimiter degrades to
+	// the bare challenge rather than emitting a broken header value.
+	poisoned := DiscoveryConfig{
+		Resource:    "https://mcp.example.test",
+		Issuers:     []string{"https://idp.example.test"},
+		MetadataURL: "https://mcp.example.test/\x7f",
+	}
+	if !poisoned.Enabled() {
+		t.Fatal("poisoned config reports disabled, want enabled so the degrade path runs")
+	}
+	if got := poisoned.ChallengeValue(); got != BareChallenge {
+		t.Errorf("poisoned challenge = %q, want bare %q", got, BareChallenge)
+	}
+}
+
+func TestMetadataResourceSuffix(t *testing.T) {
+	t.Parallel()
+
+	if got := metadataResourceSuffix(""); got != "" {
+		t.Errorf("empty resource suffix = %q, want empty", got)
+	}
+	if got := metadataResourceSuffix("https://mcp.example.test/mcp"); got != "mcp" {
+		t.Errorf("pathed suffix = %q, want mcp", got)
+	}
+	if got := metadataResourceSuffix("https://mcp.example.test"); got != "" {
+		t.Errorf("root suffix = %q, want empty", got)
+	}
+	if got := metadataResourceSuffix("://unparseable"); got != "" {
+		t.Errorf("unparseable suffix = %q, want empty", got)
+	}
+}
+
+func TestHasHeaderDelimiter(t *testing.T) {
+	t.Parallel()
+
+	for _, s := range []string{`"`, "\x01", "\x7f", "a\"b"} {
+		if !hasHeaderDelimiter(s) {
+			t.Errorf("hasHeaderDelimiter(%q) = false, want true", s)
+		}
+	}
+	if hasHeaderDelimiter("Bearer") {
+		t.Error("hasHeaderDelimiter(Bearer) = true, want false")
+	}
+}
+
+// failWriter is an http.ResponseWriter whose body Write always fails, to
+// prove the discovery handler surfaces a write error instead of a silent
+// 200 with no body.
+type failWriter struct {
+	header http.Header
+	status int
+}
+
+func (f *failWriter) Header() http.Header {
+	if f.header == nil {
+		f.header = http.Header{}
+	}
+	return f.header
+}
+
+func (f *failWriter) Write([]byte) (int, error) { return 0, errFailWrite }
+
+func (f *failWriter) WriteHeader(status int) { f.status = status }
+
+type failWriteError string
+
+func (e failWriteError) Error() string { return string(e) }
+
+var errFailWrite error = failWriteError("test write failure")
+
+func TestDiscoveryWriteErrorSurfaces(t *testing.T) {
+	t.Parallel()
+
+	fw := &failWriter{}
+	enabledConfig().serveMetadata(fw, nil)
+	// The handler attempted the 200 then hit the failing body write: the
+	// status must be the success attempt, not a silent unreported failure.
+	if fw.status != http.StatusOK {
+		t.Errorf("status = %d, want the attempted 200 before the write failed", fw.status)
 	}
 }
 
