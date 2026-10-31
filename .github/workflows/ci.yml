@@ -45,7 +45,12 @@ on:
     - cron: "23 6 * * 1"
   workflow_dispatch:
 
-permissions: {}
+permissions:
+  # The `go-ci` reusable call needs contents:read at minimum: the callee
+  # declares `permissions: contents: read`, and an empty grant starves the
+  # call at load (startup_failure, zero jobs). Narrower caller-side jobs
+  # keep their own blocks below.
+  contents: read
 
 # Cancel superseded runs per PR (or per ref for pushes and schedules).
 concurrency:
