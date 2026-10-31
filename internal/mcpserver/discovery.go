@@ -273,10 +273,11 @@ func hasHeaderDelimiter(s string) bool {
 // CredentialSourceConfigured is the edge "no silent open mode" predicate,
 // mirroring the monolith's authEnforcementConfigured: true when at least
 // one of the three explicit operator credential knobs is set — the shared
-// key, the scoped-token file, or the OIDC bearer [REDACTED] resource URI. The edge
-// verifies no Bearer [REDACTED] itself (core admits every dispatch); the knobs
+// key, the scoped-token file, or the OIDC bearer [REDACTED] resource URI. The knobs
 // declare that an identity-backed deployment stands behind this edge, so a
-// headerless request must be denied rather than served open.
+// headerless request must be denied rather than served open. When discovery
+// is configured, Bearer JWTs are additionally verified at the edge before
+// dispatch; core remains the admission authority for admitted calls.
 func CredentialSourceConfigured(apiKey, scopedTokensFile, resourceURI string) bool {
 	return strings.TrimSpace(apiKey) != "" ||
 		strings.TrimSpace(scopedTokensFile) != "" ||

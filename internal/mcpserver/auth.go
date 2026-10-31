@@ -10,6 +10,8 @@ package mcpserver
 // docs/parity.md: the edge refuses a headerless request, binds SSE sessions
 // to the presenting principal, and forwards the caller credential verbatim
 // to core on every dispatch, where core remains the admission authority.
+// When discovery is configured, Bearer JWTs are verified at the edge first
+// (issuer, audience, lifetime, signature); see EdgeAuthMiddlewareWithVerifier.
 // A constant-time shared-key comparison recognizes the deployment key as
 // the "shared" principal for stable session binding. See docs/parity.md.
 
@@ -83,13 +85,52 @@ func EdgeAuthMiddleware(sharedKey string, logger *slog.Logger) func(http.Handler
 // OAuth discovery is enabled, the bare challenge otherwise. The value is
 // fixed at wiring time from static operator config.
 func EdgeAuthMiddlewareWithChallenge(sharedKey, challenge string, logger *slog.Logger) func(http.Handler) http.Handler {
+	return edgeAuthMiddleware(sharedKey, challenge, challenge, nil, logger)
+}
+
+// EdgeAuthMiddlewareWithVerifier is EdgeAuthMiddlewareWithChallenge plus
+// the door check: when verifier is non-nil, a Bearer JWT is verified
+// against the configured issuers before it may proceed. An unrecognized
+// credential answers the discovery challenge so capable clients steer at
+// the metadata document; a post-match failure (recognized issuer, wrong
+// audience or bad crypto) answers the bare challenge and never steers.
+// A nil verifier keeps the legacy behavior exactly: any present credential
+// passes and core admits on dispatch.
+func EdgeAuthMiddlewareWithVerifier(sharedKey string, discovery DiscoveryConfig, verifier *TokenVerifier, logger *slog.Logger) func(http.Handler) http.Handler {
+	return edgeAuthMiddleware(sharedKey, discovery.ChallengeValue(), BareChallenge, verifier, logger)
+}
+
+func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge string, verifier *TokenVerifier, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			principal, ok := edgeAuth(sharedKey, r.Header.Get("Authorization"))
-			if !ok {
-				writeUnauthorizedWithChallenge(w, r, challenge)
+			header := r.Header.Get("Authorization")
+			if strings.TrimSpace(header) == "" {
+				writeUnauthorizedWithChallenge(w, r, unrecognizedChallenge)
 				if logger != nil {
 					logger.Warn("mcp transport request without credential refused",
+						"method", r.Method, "path", r.URL.Path)
+				}
+				return
+			}
+			principal := ""
+			denial := DenyNone
+			if verifier == nil {
+				var ok bool
+				principal, ok = edgeAuth(sharedKey, header)
+				if !ok {
+					denial = DenyUnrecognized
+				}
+			} else {
+				principal, denial = verifier.Verify(header)
+			}
+			if denial != DenyNone {
+				challenge := unrecognizedChallenge
+				if denial == DenyPostMatch {
+					challenge = postMatchChallenge
+				}
+				writeUnauthorizedWithChallenge(w, r, challenge)
+				if logger != nil {
+					logger.Warn("mcp transport request refused at the edge",
 						"method", r.Method, "path", r.URL.Path)
 				}
 				return
