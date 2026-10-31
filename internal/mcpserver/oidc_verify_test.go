@@ -22,6 +22,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// lockedBuffer is a goroutine-safe slog sink for asserting log shape.
 func hmacSHA256(secret, unsigned string) []byte {
 	mac := hmac.New(sha256.New, []byte(secret))
 	if _, err := mac.Write([]byte(unsigned)); err != nil {
@@ -89,8 +90,6 @@ func testIssuerServer(t *testing.T, key *rsa.PrivateKey, kid string) *httptest.S
 	return srv
 }
 
-// testIssuerServerCounted is testIssuerServer with a hit counter, so tests
-// can prove the negative cache and singleflight actually suppress egress.
 func mintToken(t *testing.T, key *rsa.PrivateKey, kid, iss, aud string, exp time.Time) string {
 	t.Helper()
 
@@ -123,16 +122,16 @@ func TestVerifyValidTokenPasses(t *testing.T) {
 	srv := testIssuerServer(t, key, testKid)
 	v := testVerifier(t, srv)
 
-	principal, denial := v.Verify(mintToken(t, key, testKid, srv.URL, testResource, time.Now().Add(time.Hour)))
-	if denial != DenyNone {
-		t.Fatalf("denial = %v, want none", denial)
+	result := v.Verify(mintToken(t, key, testKid, srv.URL, testResource, time.Now().Add(time.Hour)))
+	if result.Denial != DenyNone {
+		t.Fatalf("result.Denial = %v, want none", result.Denial)
 	}
-	if principal == "" {
-		t.Fatal("empty principal for a valid token")
+	if result.Principal == "" {
+		t.Fatal("empty result.Principal for a valid token")
 	}
-	again, _ := v.Verify(mintToken(t, key, testKid, srv.URL, testResource, time.Now().Add(time.Hour)))
-	if again != principal {
-		t.Fatalf("principal unstable: %q vs %q", principal, again)
+	againResult := v.Verify(mintToken(t, key, testKid, srv.URL, testResource, time.Now().Add(time.Hour)))
+	if againResult.Principal != result.Principal {
+		t.Fatalf("result.Principal unstable: %q vs %q", result.Principal, againResult.Principal)
 	}
 }
 
@@ -143,9 +142,9 @@ func TestVerifyWrongAudiencePostMatch(t *testing.T) {
 	srv := testIssuerServer(t, key, testKid)
 	v := testVerifier(t, srv)
 
-	_, denial := v.Verify(mintToken(t, key, testKid, srv.URL, "http://someone-else/", time.Now().Add(time.Hour)))
-	if denial != DenyPostMatch {
-		t.Fatalf("denial = %v, want post-match", denial)
+	result := v.Verify(mintToken(t, key, testKid, srv.URL, "http://someone-else/", time.Now().Add(time.Hour)))
+	if result.Denial != DenyPostMatch {
+		t.Fatalf("result.Denial = %v, want post-match", result.Denial)
 	}
 }
 
@@ -157,9 +156,9 @@ func TestVerifyUnknownIssuerUnrecognized(t *testing.T) {
 	other := testIssuerServer(t, testRSAKey(t), "other-key")
 	v := testVerifier(t, srv)
 
-	_, denial := v.Verify(mintToken(t, testRSAKey(t), "other-key", other.URL, testResource, time.Now().Add(time.Hour)))
-	if denial != DenyUnrecognized {
-		t.Fatalf("denial = %v, want unrecognized", denial)
+	result := v.Verify(mintToken(t, testRSAKey(t), "other-key", other.URL, testResource, time.Now().Add(time.Hour)))
+	if result.Denial != DenyUnrecognized {
+		t.Fatalf("result.Denial = %v, want unrecognized", result.Denial)
 	}
 }
 
@@ -171,8 +170,8 @@ func TestVerifyMalformedUnrecognized(t *testing.T) {
 	v := testVerifier(t, srv)
 
 	for _, header := range []string{"Bearer not.a.jwt", "Bearer ", "Bearer " + strings.Repeat("x", 40)} {
-		if _, denial := v.Verify(header); denial != DenyUnrecognized {
-			t.Fatalf("%q: denial = %v, want unrecognized", header, denial)
+		if result := v.Verify(header); result.Denial != DenyUnrecognized {
+			t.Fatalf("%q: result.Denial = %v, want unrecognized", header, result.Denial)
 		}
 	}
 }
@@ -184,8 +183,8 @@ func TestVerifyNonBearerPassesThrough(t *testing.T) {
 	srv := testIssuerServer(t, key, testKid)
 	v := testVerifier(t, srv)
 
-	if _, denial := v.Verify("Token opaque-value"); denial != DenyNone {
-		t.Fatalf("denial = %v, want none (legacy forward)", denial)
+	if result := v.Verify("Token opaque-value"); result.Denial != DenyNone {
+		t.Fatalf("result.Denial = %v, want none (legacy forward)", result.Denial)
 	}
 }
 
@@ -196,9 +195,9 @@ func TestVerifyExpiredPostMatch(t *testing.T) {
 	srv := testIssuerServer(t, key, testKid)
 	v := testVerifier(t, srv)
 
-	_, denial := v.Verify(mintToken(t, key, testKid, srv.URL, testResource, time.Now().Add(-time.Hour)))
-	if denial != DenyPostMatch {
-		t.Fatalf("denial = %v, want post-match", denial)
+	result := v.Verify(mintToken(t, key, testKid, srv.URL, testResource, time.Now().Add(-time.Hour)))
+	if result.Denial != DenyPostMatch {
+		t.Fatalf("result.Denial = %v, want post-match", result.Denial)
 	}
 }
 
@@ -209,9 +208,9 @@ func TestVerifyWrongKeySignaturePostMatch(t *testing.T) {
 	srv := testIssuerServer(t, key, testKid)
 	v := testVerifier(t, srv)
 
-	_, denial := v.Verify(mintToken(t, testRSAKey(t), testKid, srv.URL, testResource, time.Now().Add(time.Hour)))
-	if denial != DenyPostMatch {
-		t.Fatalf("denial = %v, want post-match", denial)
+	result := v.Verify(mintToken(t, testRSAKey(t), testKid, srv.URL, testResource, time.Now().Add(time.Hour)))
+	if result.Denial != DenyPostMatch {
+		t.Fatalf("result.Denial = %v, want post-match", result.Denial)
 	}
 }
 
@@ -224,7 +223,7 @@ func TestVerifyNoneAlgRefused(t *testing.T) {
 
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
 	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"iss":"` + srv.URL + `"}`))
-	if _, denial := v.Verify("Bearer " + header + "." + payload + "."); denial == DenyNone {
+	if result := v.Verify("Bearer " + header + "." + payload + "."); result.Denial == DenyNone {
 		t.Fatal("unsigned token accepted")
 	}
 }
@@ -238,8 +237,8 @@ func TestVerifyIssuerDownFailClosed(t *testing.T) {
 	srv.Close()
 
 	v := NewTokenVerifier(testResource, []string{iss}, "")
-	_, denial := v.Verify(mintToken(t, key, testKid, iss, testResource, time.Now().Add(time.Hour)))
-	if denial == DenyNone {
+	result := v.Verify(mintToken(t, key, testKid, iss, testResource, time.Now().Add(time.Hour)))
+	if result.Denial == DenyNone {
 		t.Fatal("unverifiable token accepted when the issuer is down")
 	}
 }
@@ -251,9 +250,9 @@ func TestVerifySharedKeyFastPath(t *testing.T) {
 	srv := testIssuerServer(t, key, testKid)
 	v := NewTokenVerifier(testResource, []string{srv.URL}, "deployment-key")
 
-	principal, denial := v.Verify("Bearer deployment-key")
-	if denial != DenyNone || principal != "shared" {
-		t.Fatalf("got (%q, %v), want (shared, none)", principal, denial)
+	result := v.Verify("Bearer deployment-key")
+	if result.Denial != DenyNone || result.Principal != "shared" {
+		t.Fatalf("got (%q, %v), want (shared, none)", result.Principal, result.Denial)
 	}
 }
 
@@ -303,15 +302,15 @@ func TestVerifySchemeCaseInsensitive(t *testing.T) {
 	v := testVerifier(t, srv)
 
 	expired := mintToken(t, key, testKid, srv.URL, testResource, time.Now().Add(-time.Hour))
-	if _, denial := v.Verify("bearer " + strings.TrimPrefix(expired, "Bearer ")); denial == DenyNone {
+	if result := v.Verify("bearer " + strings.TrimPrefix(expired, "Bearer ")); result.Denial == DenyNone {
 		t.Fatal("lowercase bearer expired token admitted")
 	}
 	wrongAud := mintToken(t, key, testKid, srv.URL, "http://someone-else/", time.Now().Add(time.Hour))
-	if _, denial := v.Verify("BEARER " + strings.TrimPrefix(wrongAud, "Bearer ")); denial != DenyPostMatch {
-		t.Fatalf("uppercase bearer wrong-audience: denial = %v, want post-match", denial)
+	if result := v.Verify("BEARER " + strings.TrimPrefix(wrongAud, "Bearer ")); result.Denial != DenyPostMatch {
+		t.Fatalf("uppercase bearer wrong-audience: result.Denial = %v, want post-match", result.Denial)
 	}
-	if _, denial := v.Verify("bearer garbage"); denial != DenyUnrecognized {
-		t.Fatalf("lowercase bearer garbage: denial = %v, want unrecognized", denial)
+	if result := v.Verify("bearer garbage"); result.Denial != DenyUnrecognized {
+		t.Fatalf("lowercase bearer garbage: result.Denial = %v, want unrecognized", result.Denial)
 	}
 }
 
@@ -343,11 +342,11 @@ func TestVerifyNoneAlgFullClaimsRefused(t *testing.T) {
 		return "Bearer " + unsigned + "." + base64.RawURLEncoding.EncodeToString(mac)
 	}
 	// Unsigned, but otherwise fully valid: must die on crypto, not on shape.
-	if _, denial := v.Verify(encode(map[string]any{"alg": "none", "typ": "JWT"}, fullClaims, "")); denial == DenyNone {
+	if result := v.Verify(encode(map[string]any{"alg": "none", "typ": "JWT"}, fullClaims, "")); result.Denial == DenyNone {
 		t.Fatal("unsigned full-claims token admitted")
 	}
 	// Symmetric signature under an unknown secret: only RS256 is trusted.
-	if _, denial := v.Verify(encode(map[string]any{"alg": "HS256", "typ": "JWT", "kid": testKid}, fullClaims, "attacker-secret")); denial == DenyNone {
+	if result := v.Verify(encode(map[string]any{"alg": "HS256", "typ": "JWT", "kid": testKid}, fullClaims, "attacker-secret")); result.Denial == DenyNone {
 		t.Fatal("HS256 token admitted")
 	}
 }
@@ -369,8 +368,8 @@ func TestVerifyEmptySubDenied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sign token: %v", err)
 	}
-	if _, denial := v.Verify("Bearer " + raw); denial != DenyPostMatch {
-		t.Fatalf("denial = %v, want post-match", denial)
+	if result := v.Verify("Bearer " + raw); result.Denial != DenyPostMatch {
+		t.Fatalf("result.Denial = %v, want post-match", result.Denial)
 	}
 }
 
@@ -401,6 +400,9 @@ func TestHTTPNonLoopbackIssuer(t *testing.T) {
 	}
 }
 
+// TestVerifyOutcomeVocabulary pins the denial outcome strings the E2E
+// leakage matrix scrapes from the edge log: byte-identical to the
+// monolith resolver's vocabulary (go/internal/oidcbearer/telemetry.go).
 func TestMiddlewareNilVerifierKeepsLegacy(t *testing.T) {
 	t.Parallel()
 

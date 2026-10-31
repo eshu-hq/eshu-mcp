@@ -114,6 +114,7 @@ func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge str
 			}
 			principal := ""
 			denial := DenyNone
+			outcome, iss := "", ""
 			if verifier == nil {
 				var ok bool
 				principal, ok = edgeAuth(sharedKey, header)
@@ -121,7 +122,8 @@ func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge str
 					denial = DenyUnrecognized
 				}
 			} else {
-				principal, denial = verifier.Verify(header)
+				result := verifier.Verify(header)
+				principal, denial, iss, outcome = result.Principal, result.Denial, result.Issuer, result.Outcome
 			}
 			if denial != DenyNone {
 				challenge := unrecognizedChallenge
@@ -130,7 +132,13 @@ func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge str
 				}
 				writeUnauthorizedWithChallenge(w, r, challenge)
 				if logger != nil {
-					logger.Warn("mcp transport request refused at the edge",
+					// Every denial reaching this block carries an outcome:
+					// headerless returns earlier and edgeAuth denies only
+					// empty credentials (also earlier), while Verify sets
+					// Outcome on every denial return. Method/path stay on
+					// the line: the E2E scraper reads named keys, and the
+					// operator keeps the request context.
+					logger.Warn("oidc Bearer [REDACTED]", "iss", iss, "outcome", outcome,
 						"method", r.Method, "path", r.URL.Path)
 				}
 				return

@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+// testIssuerServerCounted is testIssuerServer with a hit counter, so tests
+// can prove the negative cache and singleflight actually suppress egress.
 func testIssuerServerCounted(t *testing.T, key *rsa.PrivateKey, kid string) (*httptest.Server, *atomic.Int64) {
 	t.Helper()
 
@@ -49,9 +51,9 @@ func TestVerifyUnknownKidRefetchThenDeny(t *testing.T) {
 	srv := testIssuerServer(t, key, testKid)
 	v := testVerifier(t, srv)
 
-	_, denial := v.Verify(mintToken(t, key, "rotated-key", srv.URL, testResource, time.Now().Add(time.Hour)))
-	if denial != DenyPostMatch {
-		t.Fatalf("denial = %v, want post-match", denial)
+	result := v.Verify(mintToken(t, key, "rotated-key", srv.URL, testResource, time.Now().Add(time.Hour)))
+	if result.Denial != DenyPostMatch {
+		t.Fatalf("result.Denial = %v, want post-match", result.Denial)
 	}
 }
 
@@ -63,12 +65,12 @@ func TestUnknownKidSecondSightNoRefetch(t *testing.T) {
 	v := testVerifier(t, srv)
 
 	bad := mintToken(t, key, "rotated-key", srv.URL, testResource, time.Now().Add(time.Hour))
-	if _, denial := v.Verify(bad); denial != DenyPostMatch {
-		t.Fatalf("first sight: denial = %v", denial)
+	if result := v.Verify(bad); result.Denial != DenyPostMatch {
+		t.Fatalf("first sight: result.Denial = %v", result.Denial)
 	}
 	firstHits := hits.Load()
-	if _, denial := v.Verify(bad); denial != DenyPostMatch {
-		t.Fatalf("second sight: denial = %v", denial)
+	if result := v.Verify(bad); result.Denial != DenyPostMatch {
+		t.Fatalf("second sight: result.Denial = %v", result.Denial)
 	}
 	if got := hits.Load(); got != firstHits {
 		t.Fatalf("second unknown-kid sight fetched again: hits %d -> %d", firstHits, got)
@@ -88,8 +90,8 @@ func TestUnknownKidConcurrentSingleFetch(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, denial := v.Verify(bad); denial != DenyPostMatch {
-				t.Errorf("denial = %v, want post-match", denial)
+			if result := v.Verify(bad); result.Denial != DenyPostMatch {
+				t.Errorf("result.Denial = %v, want post-match", result.Denial)
 			}
 		}()
 	}
@@ -110,19 +112,19 @@ func TestUnknownKidsAlternateWithoutRefetch(t *testing.T) {
 
 	ghostA := mintToken(t, key, "ghost-a", srv.URL, testResource, time.Now().Add(time.Hour))
 	ghostB := mintToken(t, key, "ghost-b", srv.URL, testResource, time.Now().Add(time.Hour))
-	if _, denial := v.Verify(ghostA); denial != DenyPostMatch {
-		t.Fatalf("first ghost-a: denial = %v", denial)
+	if result := v.Verify(ghostA); result.Denial != DenyPostMatch {
+		t.Fatalf("first ghost-a: result.Denial = %v", result.Denial)
 	}
-	if _, denial := v.Verify(ghostB); denial != DenyPostMatch {
-		t.Fatalf("first ghost-b: denial = %v", denial)
+	if result := v.Verify(ghostB); result.Denial != DenyPostMatch {
+		t.Fatalf("first ghost-b: result.Denial = %v", result.Denial)
 	}
 	warm := hits.Load()
 	for range 5 {
-		if _, denial := v.Verify(ghostA); denial != DenyPostMatch {
-			t.Fatalf("repeat ghost-a: denial = %v", denial)
+		if result := v.Verify(ghostA); result.Denial != DenyPostMatch {
+			t.Fatalf("repeat ghost-a: result.Denial = %v", result.Denial)
 		}
-		if _, denial := v.Verify(ghostB); denial != DenyPostMatch {
-			t.Fatalf("repeat ghost-b: denial = %v", denial)
+		if result := v.Verify(ghostB); result.Denial != DenyPostMatch {
+			t.Fatalf("repeat ghost-b: result.Denial = %v", result.Denial)
 		}
 	}
 	if got := hits.Load(); got != warm {
