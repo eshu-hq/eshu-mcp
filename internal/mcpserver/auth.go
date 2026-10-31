@@ -69,13 +69,24 @@ func edgeAuth(sharedKey, authHeader string) (string, bool) {
 // transport: without an Authorization header the request is refused with the
 // core-identical 401 before the body is decoded. sharedKey is the deployment
 // key ESHU_API_KEY; empty disables the shared fast path but a present
-// credential still passes to core for admission.
+// credential still passes to core for admission. The challenge is the bare
+// Bearer [REDACTED]; use EdgeAuthMiddlewareWithChallenge when OAuth discovery is
+// enabled so the 401 steers discovery-capable clients at the metadata
+// document.
 func EdgeAuthMiddleware(sharedKey string, logger *slog.Logger) func(http.Handler) http.Handler {
+	return EdgeAuthMiddlewareWithChallenge(sharedKey, BareChallenge, logger)
+}
+
+// EdgeAuthMiddlewareWithChallenge is EdgeAuthMiddleware with an explicit
+// WWW-Authenticate challenge value: the DiscoveryConfig challenge when
+// OAuth discovery is enabled, the bare challenge otherwise. The value is
+// fixed at wiring time from static operator config.
+func EdgeAuthMiddlewareWithChallenge(sharedKey, challenge string, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			principal, ok := edgeAuth(sharedKey, r.Header.Get("Authorization"))
 			if !ok {
-				writeUnauthorized(w, r)
+				writeUnauthorizedWithChallenge(w, r, challenge)
 				if logger != nil {
 					logger.Warn("mcp transport request without credential refused",
 						"method", r.Method, "path", r.URL.Path)
@@ -126,7 +137,14 @@ func correlationID(r *http.Request) string {
 // body with a correlation id, in envelope form when the caller asked for the
 // envelope and in the plain error_code form otherwise.
 func writeUnauthorized(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("WWW-Authenticate", "Bearer")
+	writeUnauthorizedWithChallenge(w, r, BareChallenge)
+}
+
+// writeUnauthorizedWithChallenge is writeUnauthorized with an explicit
+// WWW-Authenticate challenge value: the DiscoveryConfig challenge when
+// OAuth discovery is enabled, the bare challenge otherwise.
+func writeUnauthorizedWithChallenge(w http.ResponseWriter, r *http.Request, challenge string) {
+	w.Header().Set("WWW-Authenticate", challenge)
 	if acceptsEnvelope(r) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{
 			"data":  nil,
@@ -163,9 +181,11 @@ func writeForbiddenSessionMismatch(w http.ResponseWriter) {
 // RequireCredentialSource is the destination's "no silent open mode" gate,
 // mirroring requireMCPHTTPCredentialSource: an HTTP transport with no
 // credential posture refuses to start unless the operator explicitly sets
-// the loopback escape hatch.
-func RequireCredentialSource(sharedKeyConfigured, allowUnauthenticated bool) error {
-	if sharedKeyConfigured || allowUnauthenticated {
+// the loopback escape hatch. credentialConfigured folds the three explicit
+// operator knobs the monolith counts (see CredentialSourceConfigured): the
+// shared key, the scoped-token file, and the OIDC bearer [REDACTED] resource URI.
+func RequireCredentialSource(credentialConfigured, allowUnauthenticated bool) error {
+	if credentialConfigured || allowUnauthenticated {
 		return nil
 	}
 	return ErrNoCredentialSource
@@ -173,4 +193,4 @@ func RequireCredentialSource(sharedKeyConfigured, allowUnauthenticated bool) err
 
 // errNoCredentialSource is the actionable boot refusal when the server would
 // otherwise start with no credential posture.
-var ErrNoCredentialSource = errors.New("MCP HTTP transport has no credential posture: set ESHU_API_KEY, or explicitly set ESHU_MCP_ALLOW_UNAUTHENTICATED=true for loopback/dev use only (never expose this port publicly with the escape hatch set)")
+var ErrNoCredentialSource = errors.New("MCP HTTP transport has no credential posture: set ESHU_API_KEY, ESHU_SCOPED_TOKENS_FILE, or ESHU_AUTH_RESOURCE_URI, or explicitly set ESHU_MCP_ALLOW_UNAUTHENTICATED=true for loopback/dev use only (never expose this port publicly with the escape hatch set)")

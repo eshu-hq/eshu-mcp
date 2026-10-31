@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/eshu-hq/eshu-mcp/internal/mcpserver"
 	"github.com/eshu-hq/eshu-mcp/internal/readcontract"
 	"github.com/eshu-hq/eshu-mcp/internal/resultshape"
 	"github.com/eshu-hq/eshu-mcp/internal/router"
@@ -52,9 +53,73 @@ func TestRunRejectsBadFlags(t *testing.T) {
 func TestRunRefusesBootWithoutCredentialPosture(t *testing.T) {
 	t.Setenv("ESHU_API_KEY", "")
 	t.Setenv("ESHU_MCP_ALLOW_UNAUTHENTICATED", "")
+	t.Setenv("ESHU_SCOPED_TOKENS_FILE", "")
+	t.Setenv("ESHU_AUTH_RESOURCE_URI", "")
 	err := run([]string{"--core-base-url", "https://core:8443"}, quietLogger())
 	if err == nil || !strings.Contains(err.Error(), "credential posture") {
 		t.Fatalf("run() error = %v, want the no-credential-posture refusal", err)
+	}
+}
+
+func TestRunBootsOnResourceURIAlone(t *testing.T) {
+	// The auth E2E stacks set ESHU_AUTH_RESOURCE_URI with an empty shared
+	// key and no escape hatch (eshu-hq/eshu-mcp#27): the monolith counted
+	// the URI as a credential source, so the satellite must boot there too.
+	// run() would then block serving, so prove the gate passes by driving
+	// buildServer with the same env instead.
+	t.Setenv("ESHU_API_KEY", "")
+	t.Setenv("ESHU_MCP_ALLOW_UNAUTHENTICATED", "")
+	t.Setenv("ESHU_SCOPED_TOKENS_FILE", "")
+	t.Setenv("ESHU_AUTH_RESOURCE_URI", "http://127.0.0.1:8080")
+	t.Setenv("ESHU_AUTH_AUTHORIZATION_SERVERS", "http://mock-oidc-idp:8080")
+	if !mcpserver.CredentialSourceConfigured(os.Getenv("ESHU_API_KEY"), os.Getenv("ESHU_SCOPED_TOKENS_FILE"), os.Getenv("ESHU_AUTH_RESOURCE_URI")) {
+		t.Fatal("resource-URI-only env reports no credential source")
+	}
+}
+
+func TestBuildServerServesDiscoveryWhenEnabled(t *testing.T) {
+	disc := mcpserver.DiscoveryConfigFromEnv(func(key string) string {
+		switch key {
+		case "ESHU_AUTH_RESOURCE_URI":
+			return "http://127.0.0.1:8080"
+		case "ESHU_AUTH_AUTHORIZATION_SERVERS":
+			return "http://mock-oidc-idp:8080"
+		}
+		return ""
+	})
+	if !disc.Enabled() {
+		t.Fatal("test discovery config reports disabled")
+	}
+	server, extra, _ := buildServer(quietLogger(), testClient(t), "https://core:8443", "", disc, router.Surface(""), resultshape.Mode(""), "")
+	mux := server.Handler(extra)
+
+	// The scripted OAuth flow starts here: credential-less initialize must
+	// 401 with the resource_metadata challenge, not the bare Bearer.
+	anon := httptest.NewRequest(http.MethodPost, "/mcp/message", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`))
+	anonRec := httptest.NewRecorder()
+	mux.ServeHTTP(anonRec, anon)
+	if anonRec.Code != http.StatusUnauthorized {
+		t.Fatalf("headerless initialize = %d, want 401", anonRec.Code)
+	}
+	challenge := anonRec.Header().Get("WWW-Authenticate")
+	if !strings.Contains(challenge, `resource_metadata="http://127.0.0.1:8080/.well-known/oauth-protected-resource"`) {
+		t.Errorf("challenge = %q, want the metadata directive", challenge)
+	}
+
+	// Step two of the flow: the metadata document serves the resource and
+	// the mock issuer.
+	docReq := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+	docRec := httptest.NewRecorder()
+	mux.ServeHTTP(docRec, docReq)
+	if docRec.Code != http.StatusOK {
+		t.Fatalf("GET discovery root = %d, want 200", docRec.Code)
+	}
+	body := docRec.Body.String()
+	if !strings.Contains(body, `"resource":"http://127.0.0.1:8080"`) {
+		t.Errorf("discovery document resource wrong: %s", body)
+	}
+	if !strings.Contains(body, `"authorization_servers":["http://mock-oidc-idp:8080"]`) {
+		t.Errorf("discovery document issuers wrong: %s", body)
 	}
 }
 
@@ -99,7 +164,7 @@ func TestIsTruthy(t *testing.T) {
 }
 
 func TestBuildServerWiring(t *testing.T) {
-	server, extra, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "")
+	server, extra, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", mcpserver.DiscoveryConfig{}, router.Surface(""), resultshape.Mode(""), "")
 	if summary.surface != router.SurfaceFull {
 		t.Errorf("surface = %q, want the full default", summary.surface)
 	}
@@ -126,7 +191,7 @@ func TestBuildServerWiring(t *testing.T) {
 }
 
 func TestBuildServerProductionProfile(t *testing.T) {
-	_, _, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "production")
+	_, _, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", mcpserver.DiscoveryConfig{}, router.Surface(""), resultshape.Mode(""), "production")
 	if summary.advertised != 171-4 {
 		t.Errorf("production advertised = %d, want 171 minus the 4 hidden tools", summary.advertised)
 	}
@@ -142,7 +207,7 @@ func TestBuildServerReportsBuildVersion(t *testing.T) {
 	version = stamped
 	defer func() { version = previous }()
 
-	server, extra, _ := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", router.Surface(""), resultshape.Mode(""), "")
+	server, extra, _ := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", mcpserver.DiscoveryConfig{}, router.Surface(""), resultshape.Mode(""), "")
 	req := httptest.NewRequest(http.MethodPost, "/mcp/message",
 		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`))
 	req.Header.Set("Authorization", "Bearer deploy-key")

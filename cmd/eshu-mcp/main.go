@@ -56,6 +56,9 @@ func run(args []string, logOut *slog.Logger) error {
 
 	apiKey := getenv("ESHU_API_KEY")
 	allowUnauthenticated := isTruthy(getenv("ESHU_MCP_ALLOW_UNAUTHENTICATED"))
+	scopedTokensFile := getenv(mcpserver.ScopedTokensFileEnv)
+	resourceURI := getenv(mcpserver.ResourceURIEnv)
+	credentialConfigured := mcpserver.CredentialSourceConfigured(apiKey, scopedTokensFile, resourceURI)
 
 	surface, err := router.ParseSurface(strings.TrimSpace(getenv("ESHU_MCP_TOOL_SURFACE")))
 	if err != nil {
@@ -69,9 +72,11 @@ func run(args []string, logOut *slog.Logger) error {
 
 	// No silent open mode over HTTP: refuse to start with no credential
 	// posture unless the operator explicitly opts into the loopback escape
-	// hatch. The edge forwards the caller credential to core on every
-	// dispatch; core remains the admission authority.
-	if err := mcpserver.RequireCredentialSource(apiKey != "", allowUnauthenticated); err != nil {
+	// hatch. The posture folds the same three knobs the monolith counts
+	// (shared key, scoped-token file, OIDC resource URI); the edge
+	// forwards the caller credential to core on every dispatch, and core
+	// remains the admission authority.
+	if err := mcpserver.RequireCredentialSource(credentialConfigured, allowUnauthenticated); err != nil {
 		return err
 	}
 	// Fail fast when the embedded registry did not load: serving health
@@ -89,7 +94,13 @@ func run(args []string, logOut *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("eshu-mcp: invalid core client config: %w", err)
 	}
-	server, extra, summary := buildServer(logOut, client, *coreBaseURL, apiKey, surface, shape, profile)
+	discovery := mcpserver.DiscoveryConfigFromEnv(getenv)
+	if discovery.Enabled() {
+		logOut.Info("oauth discovery enabled",
+			"resource", discovery.Resource,
+			"metadata_url", discovery.MetadataURL)
+	}
+	server, extra, summary := buildServer(logOut, client, *coreBaseURL, apiKey, discovery, surface, shape, profile)
 	logOut.Info("eshu-mcp serving",
 		"contract", eshuregistry.ContractVersion(),
 		"tools", summary.advertised,
@@ -113,7 +124,7 @@ type serverSummary struct {
 // pinned surface. It wires the catalog-free lexical ranker, so the router
 // and core_router surfaces boot with find_tool ranking. The core client
 // arrives built: run() rejects an invalid config before any listener starts.
-func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, apiKey string, surface router.Surface, shape resultshape.Mode, profile string) (*mcpserver.Server, *http.ServeMux, serverSummary) {
+func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, apiKey string, discovery mcpserver.DiscoveryConfig, surface router.Surface, shape resultshape.Mode, profile string) (*mcpserver.Server, *http.ServeMux, serverSummary) {
 	tools := eshuregistry.Definitions()
 	if mcpserver.IsProductionProfile(profile) {
 		hidden := eshuregistry.ProductionHidden()
@@ -141,8 +152,9 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 			return rank.New(tools)
 		}),
 	}
-	if apiKey != "" {
-		opts = append(opts, mcpserver.WithTransportAuth(mcpserver.EdgeAuthMiddleware(apiKey, logOut)))
+	if apiKey != "" || discovery.ResourceURISet() {
+		opts = append(opts, mcpserver.WithTransportAuth(
+			mcpserver.EdgeAuthMiddlewareWithChallenge(apiKey, discovery.ChallengeValue(), logOut)))
 	}
 	// The escape-hatch caller passes apiKey "" with transport auth off: every
 	// dispatch still forwards the caller credential to core for admission.
@@ -151,6 +163,7 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 	surfaceName, advertised, listBytes := server.ToolSurfaceSummary()
 
 	extra := http.NewServeMux()
+	discovery.Mount(extra)
 	extra.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]any{

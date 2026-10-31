@@ -28,12 +28,16 @@ independent build, test, and image steps.
   a nil ranker still answers ranker-unavailable).
 - `internal/mcpserver/`: the HTTP transport (`GET /health`, `GET /sse`,
   `POST /mcp/message`) with edge auth that refuses credential-less callers
-  and otherwise forwards the caller credential verbatim to core.
+  and otherwise forwards the caller credential verbatim to core, plus the
+  RFC 9728 OAuth discovery document and 401 challenge when
+  `ESHU_AUTH_RESOURCE_URI` and `ESHU_AUTH_AUTHORIZATION_SERVERS` are set.
 - `cmd/eshu-mcp/`: the binary. It exposes `GET /healthz` (contract
   version, tool count, core origin) plus the transport routes.
-  `--core-base-url` is required. `ESHU_API_KEY` sets the edge credential
-  posture; the key never appears in process flags, and every dispatch
-  forwards the caller credential to core for admission.
+  `--core-base-url` is required. The edge credential posture folds the
+  same three knobs as the in-tree server (`ESHU_API_KEY`,
+  `ESHU_SCOPED_TOKENS_FILE`, `ESHU_AUTH_RESOURCE_URI`); the key never
+  appears in process flags, and every dispatch forwards the caller
+  credential to core for admission.
 - `Dockerfile`: multi-stage build, digest-pinned non-root runtime, no shell.
 
 ## Proof (local, this increment)
