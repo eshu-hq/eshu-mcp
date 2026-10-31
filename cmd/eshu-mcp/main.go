@@ -35,49 +35,65 @@ func isTruthy(value string) bool {
 }
 
 func run(args []string, logOut *slog.Logger) error {
+	getenv := func(key string) string { return os.Getenv(key) }
+	addr, server, extra, err := wireServer(args, getenv, logOut)
+	if err != nil {
+		return err
+	}
+	return server.RunHTTP(context.Background(), addr, extra)
+}
+
+// wireServer parses flags and operator env and wires the full serving
+// stack without binding a listener, so tests can drive the exact boot
+// path run serves: any wiring break here fails the wire-level tests
+// rather than hiding behind a unit-tested predicate.
+func wireServer(args []string, getenv func(string) string, logOut *slog.Logger) (string, *mcpserver.Server, *http.ServeMux, error) {
 	flags := flag.NewFlagSet("eshu-mcp", flag.ContinueOnError)
 	addr := flags.String("addr", ":8080", "listen address for the MCP surface")
 	coreBaseURL := flags.String("core-base-url", "", "core read-API origin, for example https://core:8443")
 	if err := flags.Parse(args); err != nil {
-		return err
+		return "", nil, nil, err
 	}
 	if *coreBaseURL == "" {
-		return fmt.Errorf("eshu-mcp: --core-base-url is required")
+		return "", nil, nil, fmt.Errorf("eshu-mcp: --core-base-url is required")
 	}
-
-	getenv := func(key string) string { return os.Getenv(key) }
 
 	// The destination serves HTTP only: stdio is the local embedded flow in
 	// core, while this binary is a network service. Refuse a stdio request
 	// instead of silently serving HTTP.
 	if transport := strings.ToLower(strings.TrimSpace(getenv("ESHU_MCP_TRANSPORT"))); transport != "" && transport != "http" {
-		return fmt.Errorf("eshu-mcp: ESHU_MCP_TRANSPORT=%q is not supported (want http or unset)", transport)
+		return "", nil, nil, fmt.Errorf("eshu-mcp: ESHU_MCP_TRANSPORT=%q is not supported (want http or unset)", transport)
 	}
 
 	apiKey := getenv("ESHU_API_KEY")
 	allowUnauthenticated := isTruthy(getenv("ESHU_MCP_ALLOW_UNAUTHENTICATED"))
+	scopedTokensFile := getenv(mcpserver.ScopedTokensFileEnv)
+	resourceURI := getenv(mcpserver.ResourceURIEnv)
+	credentialConfigured := mcpserver.CredentialSourceConfigured(apiKey, scopedTokensFile, resourceURI)
 
 	surface, err := router.ParseSurface(strings.TrimSpace(getenv("ESHU_MCP_TOOL_SURFACE")))
 	if err != nil {
-		return fmt.Errorf("eshu-mcp: invalid ESHU_MCP_TOOL_SURFACE: %w", err)
+		return "", nil, nil, fmt.Errorf("eshu-mcp: invalid ESHU_MCP_TOOL_SURFACE: %w", err)
 	}
 	shape, err := resultshape.Parse(strings.TrimSpace(getenv("ESHU_MCP_RESULT_SHAPE")))
 	if err != nil {
-		return fmt.Errorf("eshu-mcp: invalid ESHU_MCP_RESULT_SHAPE: %w", err)
+		return "", nil, nil, fmt.Errorf("eshu-mcp: invalid ESHU_MCP_RESULT_SHAPE: %w", err)
 	}
 	profile := strings.TrimSpace(getenv("ESHU_MCP_QUERY_PROFILE"))
 
 	// No silent open mode over HTTP: refuse to start with no credential
 	// posture unless the operator explicitly opts into the loopback escape
-	// hatch. The edge forwards the caller credential to core on every
-	// dispatch; core remains the admission authority.
-	if err := mcpserver.RequireCredentialSource(apiKey != "", allowUnauthenticated); err != nil {
-		return err
+	// hatch. The posture folds the same three knobs the monolith counts
+	// (shared key, scoped-token file, OIDC resource URI); the edge
+	// forwards the caller credential to core on every dispatch, and core
+	// remains the admission authority.
+	if err := mcpserver.RequireCredentialSource(credentialConfigured, allowUnauthenticated); err != nil {
+		return "", nil, nil, err
 	}
 	// Fail fast when the embedded registry did not load: serving health
 	// with an empty contract and zero tools would be a false-green signal.
 	if err := eshuregistry.LoadError(); err != nil {
-		return fmt.Errorf("eshu-mcp: registry load failed: %w", err)
+		return "", nil, nil, fmt.Errorf("eshu-mcp: registry load failed: %w", err)
 	}
 
 	if allowUnauthenticated {
@@ -87,9 +103,15 @@ func run(args []string, logOut *slog.Logger) error {
 	}
 	client, err := readcontract.NewClient(readcontract.DefaultConfig(*coreBaseURL, ""))
 	if err != nil {
-		return fmt.Errorf("eshu-mcp: invalid core client config: %w", err)
+		return "", nil, nil, fmt.Errorf("eshu-mcp: invalid core client config: %w", err)
 	}
-	server, extra, summary := buildServer(logOut, client, *coreBaseURL, apiKey, surface, shape, profile)
+	discovery := mcpserver.DiscoveryConfigFromEnv(getenv)
+	if discovery.Enabled() {
+		logOut.Info("oauth discovery enabled",
+			"resource", discovery.Resource,
+			"metadata_url", discovery.MetadataURL)
+	}
+	server, extra, summary := buildServer(logOut, client, *coreBaseURL, apiKey, discovery, credentialConfigured, surface, shape, profile)
 	logOut.Info("eshu-mcp serving",
 		"contract", eshuregistry.ContractVersion(),
 		"tools", summary.advertised,
@@ -98,7 +120,7 @@ func run(args []string, logOut *slog.Logger) error {
 		"core", *coreBaseURL,
 		"addr", *addr,
 	)
-	return server.RunHTTP(context.Background(), *addr, extra)
+	return *addr, server, extra, nil
 }
 
 // serverSummary is the startup advertisement the operator confirms.
@@ -112,8 +134,11 @@ type serverSummary struct {
 // without binding a listener, so tests can prove the wiring serves the
 // pinned surface. It wires the catalog-free lexical ranker, so the router
 // and core_router surfaces boot with find_tool ranking. The core client
-// arrives built: run() rejects an invalid config before any listener starts.
-func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, apiKey string, surface router.Surface, shape resultshape.Mode, profile string) (*mcpserver.Server, *http.ServeMux, serverSummary) {
+// arrives built: wireServer rejects an invalid config before any listener
+// starts. authEnforced mirrors the monolith: transport auth is wired
+// whenever any credential knob is set, so a headerless request is denied;
+// only the escape-hatch-open deployment with no source serves open.
+func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, apiKey string, discovery mcpserver.DiscoveryConfig, authEnforced bool, surface router.Surface, shape resultshape.Mode, profile string) (*mcpserver.Server, *http.ServeMux, serverSummary) {
 	tools := eshuregistry.Definitions()
 	if mcpserver.IsProductionProfile(profile) {
 		hidden := eshuregistry.ProductionHidden()
@@ -141,8 +166,9 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 			return rank.New(tools)
 		}),
 	}
-	if apiKey != "" {
-		opts = append(opts, mcpserver.WithTransportAuth(mcpserver.EdgeAuthMiddleware(apiKey, logOut)))
+	if authEnforced {
+		opts = append(opts, mcpserver.WithTransportAuth(
+			mcpserver.EdgeAuthMiddlewareWithChallenge(apiKey, discovery.ChallengeValue(), logOut)))
 	}
 	// The escape-hatch caller passes apiKey "" with transport auth off: every
 	// dispatch still forwards the caller credential to core for admission.
@@ -151,6 +177,7 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 	surfaceName, advertised, listBytes := server.ToolSurfaceSummary()
 
 	extra := http.NewServeMux()
+	discovery.Mount(extra)
 	extra.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]any{
