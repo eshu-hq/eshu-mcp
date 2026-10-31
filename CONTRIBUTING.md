@@ -14,12 +14,14 @@ baseline is measured at that floor (issues #3, #11).
 
 Shell scripts pass `shellcheck` (see the `shell` lane). The contract
 surface keeps its own gate: `python3 scripts/check-parity.py` (see the
-`contract-parity` workflow), which stays separate until the
-reusable-workflow move (issue #10).
+`contract-parity` workflow), which stays a separate workflow by design:
+the shared reusable has no parity lane.
 
 ## CI lanes
 
-Job names are frozen because branch protection requires `ci-complete`:
+Lane bodies live in the shared `go-collector-ci` reusable workflow
+(`eshu-hq/.github`, v2, pinned in `ci.yml`); check runs nest as
+`go-ci / <lane>`, so branch protection requires `go-ci / ci-complete`:
 
 | Lane | Runs when |
 | --- | --- |
@@ -27,10 +29,10 @@ Job names are frozen because branch protection requires `ci-complete`:
 | `test` | Above, plus fixtures and config the tests read, plus unclassified files |
 | `race` | Go sources, module, lint-config, or workflow changes, plus unclassified files, plus a coverage artifact and floor check |
 | `shell` | Shell script changes |
-| `image` | `Dockerfile` / `.dockerignore` changes (build only, no push); skipped until one lands |
+| `image` | `Dockerfile` / `.dockerignore` **or Go-source** changes (build only, no push), since the image go-builds the sources |
 | Tag `v*` | `release`: multi-arch push to `ghcr.io/eshu-hq/eshu-mcp` with provenance, SBOM, Trivy gate, GitHub Release (see `docs/release.md`) |
-| `govulncheck` | Dependency changes, pushes to `main`, weekly schedule, manual dispatch; skipped until the first `go.mod` lands |
-| `gosec` | Pushes to `main`, weekly schedule, and manual dispatch; advisory, SARIF to the Security tab; skipped until the first `go.mod` lands |
+| `govulncheck` | Dependency changes, pushes, weekly schedule, manual dispatch |
+| `gosec` | Pushes, weekly schedule, and manual dispatch; advisory on PRs, SARIF to the Security tab via the caller-side job |
 | `ci-complete` | Always; fails on any needed lane failure, passes on legitimate skips |
 
 Docs-only PRs (`README.md`, `LICENSE`, other `**/*.md`) run no lane and
@@ -38,7 +40,7 @@ stay mergeable through `ci-complete`. Anything unclassified (for example
 `Makefile`, `CODEOWNERS`, `.gitignore`) runs `lint`, `test`, and `race`.
 Fixture-JSON-only or shell-only PRs run `test` or `shell` only, with no
 lint, format, or race. A manual `workflow_dispatch` run records every
-lane; the weekly schedule runs `govulncheck` and `gosec` only.
+lane; scheduled and branch-push runs execute every lane.
 
 If you change a shell script that a test executes, run `make ci` locally:
 the `shell`-only PR path cannot know about that edge on its own.
