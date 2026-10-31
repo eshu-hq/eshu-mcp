@@ -231,3 +231,28 @@ func TestCompilePatternRejectsCorruptCache(t *testing.T) {
 		t.Fatal("compilePattern(corrupt) = nil, want the type error")
 	}
 }
+
+func TestDescribeBranches(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		value any
+		want  string
+	}{
+		{nil, "null"},
+		{"hi", "a string"},
+		{true, "a boolean"},
+		{3.0, "an integer"},
+		{2.5, "a number"},
+		{[]any{1}, "an array"},
+		{map[string]any{}, "an object"},
+	}
+	for _, tc := range cases {
+		if got := describe(tc.value); got != tc.want {
+			t.Fatalf("describe(%#v) = %q, want %q", tc.value, got, tc.want)
+		}
+	}
+	if got := describe(struct{}{}); got == "" {
+		t.Fatal("fallback describe empty")
+	}
+}
