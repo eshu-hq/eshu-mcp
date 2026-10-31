@@ -21,7 +21,9 @@ the shared reusable has no parity lane.
 
 Lane bodies live in the shared `go-collector-ci` reusable workflow
 (`eshu-hq/.github`, v2, pinned in `ci.yml`); check runs nest as
-`go-ci / <lane>`, so branch protection requires `go-ci / ci-complete`:
+`go-ci / <lane>`; branch protection keeps requiring the top-level
+`ci-complete` alias job (which mirrors `go-ci / ci-complete`, so no
+ruleset change was needed):
 
 | Lane | Runs when |
 | --- | --- |
@@ -34,6 +36,7 @@ Lane bodies live in the shared `go-collector-ci` reusable workflow
 | `govulncheck` | Dependency changes, pushes, weekly schedule, manual dispatch |
 | `gosec` | Pushes, weekly schedule, and manual dispatch; advisory on PRs, SARIF to the Security tab via the caller-side job |
 | `ci-complete` | Always; fails on any needed lane failure, passes on legitimate skips |
+| `boundary` | Off (`run-boundary: false`): no repo-specific boundary gate exists; the 500-line file cap lives in the upstream `lint` lane |
 
 Docs-only PRs (`README.md`, `LICENSE`, other `**/*.md`) run no lane and
 stay mergeable through `ci-complete`. Anything unclassified (for example

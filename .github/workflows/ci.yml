@@ -18,7 +18,12 @@
 #   previously ran govulncheck + gosec only.
 # - `gosec` findings stay advisory on PRs; the Security-tab upload moves to
 #   the caller-side `gosec-sarif` job below (non-PR events only, failures
-#   fail loudly).
+#   fail loudly). `gosec` now also runs advisory on PRs touching Go sources
+#   (base ran it only on push/schedule/dispatch).
+# - `run-boundary` stays false: this repo has no repo-specific boundary gate
+#   beyond the 500-line file cap, which the upstream `lint` lane enforces
+#   (its "500-line file cap" step runs on every lint execution, and the
+#   lane runs on any Go/module change plus every push/schedule run).
 # - The weekly issue attributes via this run's failed check names and takes
 #   the `security` label only when a security lane failed (base filed only
 #   on govulncheck failure).
@@ -136,7 +141,7 @@ jobs:
     with:
       module: mcp
       go-version-file: go.mod
-      coverage-floor: 80.3
+      coverage-floor: 90 # ratcheted by #24; only rises
       run-image: ${{ github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.image == 'true' || needs.changes.outputs.go == 'true' || needs.changes.outputs.workflows == 'true' }}
       image-tag: eshu-mcp:ci
       image-context: .
@@ -159,15 +164,20 @@ jobs:
   ci-complete:
     # Compatibility alias: mirrors `go-ci / ci-complete` so the required
     # `ci-complete` context keeps reporting after the move (check runs nest
-    # as `go-ci / <lane>`). Same semantics as the upstream aggregator: any
-    # needed-lane failure fails, legitimate skips pass.
-    needs: [go-ci]
+    # as `go-ci / <lane>`). Same semantics as the upstream aggregator, plus
+    # the changes-gate the upstream cannot see: a failed changes job skips
+    # go-ci, so the alias also requires changes to have succeeded.
+    needs: [changes, go-ci]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: mirror go-ci result
         run: |
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "changes result: ${{ needs.changes.result }}" >&2
+            exit 1
+          fi
           if [ "${{ needs.go-ci.result }}" = "success" ] || [ "${{ needs.go-ci.result }}" = "skipped" ]; then
             exit 0
           fi
@@ -186,7 +196,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      checks: read
+      actions: read # Jobs API read for failed-check attribution
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
@@ -217,6 +227,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      actions: read # artifact download for the SARIF upload
       security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
