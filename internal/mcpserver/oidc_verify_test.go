@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -240,6 +241,51 @@ func TestVerifyIssuerDownFailClosed(t *testing.T) {
 	result := v.Verify(mintToken(t, key, testKid, iss, testResource, time.Now().Add(time.Hour)))
 	if result.Denial == DenyNone {
 		t.Fatal("unverifiable token accepted when the issuer is down")
+	}
+}
+
+// TestVerifySingleflightFollowerFetchFailure pins the follower branch of
+// the fetch/signature split: when the test goroutine holds fetch leadership
+// for a down issuer, Verify must join as a follower and report
+// jwks_fetch_failure (never bad_signature) from the shared call's error.
+// The server stays closed throughout, so even a Verify that arrives after
+// the shared call completes refetches against the dead issuer and lands in
+// the same bucket — the assertion holds regardless of goroutine timing.
+func TestVerifySingleflightFollowerFetchFailure(t *testing.T) {
+	t.Parallel()
+
+	key := testRSAKey(t)
+	srv := testIssuerServer(t, key, testKid)
+	iss := srv.URL
+	srv.Close()
+
+	v := NewTokenVerifier(testResource, []string{iss}, "")
+
+	v.mu.Lock()
+	call, leader := v.joinFetchLocked(iss)
+	v.mu.Unlock()
+	if !leader {
+		t.Fatal("expected the test to seize fetch leadership")
+	}
+
+	// mintToken already prefixes "Bearer " (unlike a raw SignedString).
+	raw := mintToken(t, key, "ghost-kid", iss, testResource, time.Now().Add(time.Hour))
+	done := make(chan VerifyResult, 1)
+	go func() { done <- v.Verify(raw) }()
+
+	time.Sleep(500 * time.Millisecond)
+	v.mu.Lock()
+	v.finishFetchLocked(iss, call, errors.New("boom"))
+	v.mu.Unlock()
+
+	select {
+	case result := <-done:
+		if result.Denial != DenyPostMatch || result.Outcome != "jwks_fetch_failure" || result.Issuer != iss {
+			t.Fatalf("got (%v, %q, %q), want (post-match, jwks_fetch_failure, %q)",
+				result.Denial, result.Outcome, result.Issuer, iss)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Verify did not return after the shared fetch failed")
 	}
 }
 
