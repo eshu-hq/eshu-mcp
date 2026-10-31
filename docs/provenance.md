@@ -20,6 +20,15 @@ at the reseed commit). This seed follows the source: 169, ending at
 `search_dockerfile_installs` (restored from `eshu-hq/eshu#9303`, which the
 prior 168-tool seed predated).
 
+Appendix (#9670): the source census appended two tools after the reseed —
+`search_php_configuration` (`go/internal/mcp/tools_content.go`,
+route `POST /api/v0/content/php-config/search`) and
+`list_ssm_host_inventory` (`go/internal/mcp/cloud/ssm_host_inventory_tools.go`,
+route `GET /api/v0/cloud/ssm-host-inventory`). Both are ported here verbatim
+(descriptions, input schemas, and routes verified against in-tree
+`origin/main` at `b1748fc0b1b65d8f2ee29fbd58bbf5b2251d6a84`), in census order,
+bringing the contract to the full 171-tool pre-extraction set.
+
 ## File mapping
 
 | This file | Source | Class |

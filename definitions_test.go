@@ -9,7 +9,7 @@ import (
 )
 
 // TestDefinitionsMatchRegistryContract proves the served definitions are the
-// contract the registry advertises: same 169 names in the same order, the
+// contract the registry advertises: same 171 names in the same order, the
 // router pair intact, every example keyed to a registered tool, and the
 // profile and core-router sets drawn from real tool names.
 func TestDefinitionsMatchRegistryContract(t *testing.T) {

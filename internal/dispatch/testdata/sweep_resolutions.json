@@ -2697,6 +2697,20 @@
       }
     }
   ],
+  "list_ssm_host_inventory": [
+   {
+     "arguments": {
+      "limit": 5
+     },
+     "body": null,
+     "label": "default",
+     "method": "GET",
+     "path": "/api/v0/cloud/ssm-host-inventory",
+     "query": {
+      "limit": "5"
+     }
+   }
+  ],
   "list_supply_chain_impact_findings": [
     {
       "arguments": {
@@ -2951,6 +2965,22 @@
       "label": "default",
       "method": "POST",
       "path": "/api/v0/content/files/search"
+    }
+  ],
+  "search_php_configuration": [
+    {
+      "arguments": {
+        "limit": 5,
+        "mode": "mod_php"
+      },
+      "body": {
+        "directive": "",
+        "limit": 5,
+        "mode": "mod_php"
+      },
+      "label": "default",
+      "method": "POST",
+      "path": "/api/v0/content/php-config/search"
     }
   ],
   "search_registry_bundles": [

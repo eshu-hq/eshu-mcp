@@ -24,7 +24,7 @@ imports them first. See
 ## Layout
 
 - `contracts/tool-registry/v1/tools.json`: versioned tool-contract surface.
-  169 registry tools in source registration order, plus the router surface,
+  171 registry tools in source registration order, plus the router surface,
   dispatch bounds, and envelope MIME. Order is contractual.
 - `contracts/shared-shapes/v1/SHARED_SHAPES.md`: the shared envelope/result
   shapes and their single-publisher rule.
@@ -42,7 +42,7 @@ imports them first. See
 - `internal/readcontract/`: the versioned HTTP read-contract client seam.
 - `cmd/eshu-mcp/`: the binary serving `GET /healthz` plus the MCP
   transport routes (`GET /health`, `GET /sse`, `POST /mcp/message`) over
-  the 169-tool registry.
+  the 171-tool registry.
 
 ## Checks
 

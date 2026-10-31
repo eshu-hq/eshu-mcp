@@ -306,6 +306,7 @@
     "list_semantic_code_hints": {},
     "list_semantic_documentation_observations": {},
     "list_service_catalog_correlations": {},
+    "list_ssm_host_inventory": {},
     "list_supply_chain_impact_findings": {},
     "list_terraform_config_state_drift_findings": {
       "scope_id": "<scope_id>"
@@ -334,6 +335,7 @@
     "search_file_content": {
       "pattern": "<pattern>"
     },
+    "search_php_configuration": {},
     "search_registry_bundles": {},
     "search_semantic_context": {
       "limit": 1,
@@ -7525,6 +7527,83 @@
         "type": "object"
       },
       "name": "search_dockerfile_installs"
+    },
+    {
+      "description": "Find repositories declaring a PHP directive or server mode in committed PHP/Apache configuration. Returns only guarded structured evidence with file and line; raw configuration bodies are withheld.",
+      "inputSchema": {
+        "properties": {
+          "cursor": {
+            "description": "Opaque next_cursor from the preceding page",
+            "type": "string"
+          },
+          "directive": {
+            "description": "PHP directive name, for example memory_limit",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "mode": {
+            "description": "Declared server mode",
+            "enum": [
+              "mod_php",
+              "php-fpm"
+            ],
+            "type": "string"
+          },
+          "repo_id": {
+            "description": "Optional repository selector",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "search_php_configuration"
+    },
+    {
+      "description": "List admitted SSM host inventory observations with capture status by bounded instance, account, region, and status filters. Returns committed allowlisted application rows and platform observations per EC2 managed host with a read-time status overlay (successful, partial, stale, unknown). Statuses partial/stale/unknown preserve the prior generation's rows; the response never synthesizes vulnerability or supply-chain findings. Unsupported on lightweight local and authoritative runtimes (graph-backed reads).",
+      "inputSchema": {
+        "properties": {
+          "account_id": {
+            "description": "Exact AWS account id filter.",
+            "type": "string"
+          },
+          "cursor": {
+            "description": "Continuation cursor: non-negative integer host offset from the previous page's next_cursor",
+            "type": "string"
+          },
+          "instance_id": {
+            "description": "Exact EC2 managed node instance id filter.",
+            "type": "string"
+          },
+          "limit": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "region": {
+            "description": "Exact AWS region filter.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Read-time capture status filter: successful, partial, stale, or unknown. Applies after host paging, so a filtered page may be short.",
+            "enum": [
+              "successful",
+              "partial",
+              "stale",
+              "unknown"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "list_ssm_host_inventory"
     }
   ],
   "router_tools": [
