@@ -18,6 +18,13 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
+Automatic patch tags (Refs #40): a PR merged to `main` with the
+`release:patch` label is tagged with the next patch version by
+`.github/workflows/auto-tag.yml`, with no manual push. Minor/major
+bumps and merges without the label stay manual. The tag push fires
+`release` exactly like a hand-pushed tag. To dry-run the bump
+computation without pushing, run Actions, `auto-tag`, Run workflow.
+
 Watch the `release` run on the tag: `build-and-scan`, then `push`,
 then `github-release`. The release body records the pushed digest;
 verify that digest before deploying anywhere (never the mutable tag: the
