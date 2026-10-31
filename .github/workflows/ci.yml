@@ -7,8 +7,9 @@
 # cannot own (weekly findings issue, SARIF upload). Lane bodies
 # (lint/test/race/shell/image/boundary/govulncheck/gosec/actionlint and
 # the ci-complete aggregator) live upstream; check runs nest as
-# `go-ci / <lane>`, so the ruleset requires `go-ci / ci-complete`
-# (update it at merge time; the old `ci-complete` context stops reporting).
+# `go-ci / <lane>`, and the top-level `ci-complete` alias job below
+# mirrors `go-ci / ci-complete`, so the required `ci-complete` context
+# keeps reporting with no ruleset change.
 #
 # Deltas vs the pre-move in-repo lanes (all disclosed in the move PR):
 # - `image` also runs on Go-source changes (the Dockerfile `COPY . .`s and
@@ -16,9 +17,11 @@
 # - Scheduled and branch-push runs execute every lane; the weekly schedule
 #   previously ran govulncheck + gosec only.
 # - `gosec` findings stay advisory on PRs; the Security-tab upload moves to
-#   the caller-side `gosec-sarif` job below (non-PR events only).
-# - The weekly findings issue is one combined govulncheck+gosec issue
-#   (label `security`) instead of two separate filings.
+#   the caller-side `gosec-sarif` job below (non-PR events only, failures
+#   fail loudly).
+# - The weekly issue attributes via this run's failed check names and takes
+#   the `security` label only when a security lane failed (base filed only
+#   on govulncheck failure).
 # - Branch pushes cancel superseded runs (previously PR runs only).
 #
 # Pinned actions (re-verify with git ls-remote when auditing; Dependabot
@@ -28,7 +31,8 @@
 #   actions/download-artifact v7         37930b1c2abaa49bbe596cd826c3c89aef350131
 #   github/codeql-action/upload-sarif v4.39.1 9b3254085494b55a0f7c4c2b3d2d52cc712ce370
 #   eshu-hq/.github v2                   4d01ab90baf5dd77c21cc1ee6bdf701332613449
-# Go tools (passed as inputs; hash-verified by the toolchain on install):
+# Go tools (every version passed explicitly as an input below, never the
+# upstream default, so a default drift is a visible diff here):
 #   golangci-lint v2.12.2, govulncheck v1.9.0 (-scan package),
 #   gosec v2.30.0 (this repo's measured advisory baseline),
 #   actionlint v1.7.12 (tarball, sha256-checked upstream).
@@ -142,40 +146,66 @@ jobs:
       # below is reachable; PR runs stay advisory green.
       gosec-fail-on-findings: ${{ github.event_name == 'schedule' }}
       gosec-version: v2.30.0 # this repo's measured advisory baseline
+      golangci-lint-version: v2.12.2
+      govulncheck-version: v1.9.0
+      actionlint-version: '1.7.12'
       run-actionlint: ${{ github.event_name != 'pull_request' || needs.changes.outputs.workflows == 'true' }}
+
+  ci-complete:
+    # Compatibility alias: mirrors `go-ci / ci-complete` so the required
+    # `ci-complete` context keeps reporting after the move (check runs nest
+    # as `go-ci / <lane>`). Same semantics as the upstream aggregator: any
+    # needed-lane failure fails, legitimate skips pass.
+    needs: [go-ci]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: mirror go-ci result
+        run: |
+          if [ "${{ needs.go-ci.result }}" = "success" ] || [ "${{ needs.go-ci.result }}" = "skipped" ]; then
+            exit 0
+          fi
+          echo "go-ci result: ${{ needs.go-ci.result }}" >&2
+          exit 1
 
   scheduled-findings:
     # The reusable runs contents:read-only, so weekly issue filing stays a
-    # caller job. One combined govulncheck+gosec issue (the reusable cannot
-    # report per-lane results to the caller): fires only when go-ci failed
-    # on a schedule event, and lists-or-comments instead of duplicating.
+    # caller job. Fires only when go-ci failed on a schedule event, and
+    # attributes by reading this run's failed check names (never assumes
+    # the scans failed): the `security` label applies only when a failed
+    # check is a security lane. Lists-or-comments instead of duplicating.
     needs: [go-ci]
     if: failure() && github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
+      checks: read
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: file or update the weekly findings issue
         run: |
-          title="[ci] weekly scan findings $(date -u +%F)"
-          body="Scheduled govulncheck/gosec failed on ${{ github.sha }}. See run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}."
+          failed=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs" --paginate --jq '[.jobs[] | select(.conclusion == "failure") | .name] | unique | join(", ")')
+          title="[ci] weekly scheduled failure $(date -u +%F)"
+          body="Scheduled CI failed on ${{ github.sha }}. Failed checks: ${failed}. See run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}."
           open=$(gh issue list --search "$title in:title" --state open --json number --jq '.[0].number')
           if [ -n "$open" ] && [ "$open" != "null" ]; then
             gh issue comment "$open" --body "$body"
-          else
+          elif echo "$failed" | grep -qiE 'govulncheck|gosec'; then
             gh issue create --title "$title" --label security --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
           fi
 
   gosec-sarif:
-    # Security-tab upload the reusable deliberately omits (fork PRs run
-    # read-only): caller-side, non-PR events only, and continue-on-error
-    # so a 403 never turns into a silent green no-op. Skips when go-ci
-    # failed (including scheduled-finding runs): the finding count stays
-    # in that run's summary and the weekly issue links the run.
+    # Security-tab upload the reusable deliberately omits: caller-side,
+    # non-PR events only. Upload failures fail this job loudly (no
+    # continue-on-error): a red upload must never report green. Skips when
+    # go-ci failed (including scheduled-finding runs): the finding count
+    # stays in that run's summary and the weekly issue links the run.
     needs: [go-ci]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -193,4 +223,3 @@ jobs:
         uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: gosec.sarif
-        continue-on-error: true

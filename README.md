@@ -50,6 +50,8 @@ Run `python3 scripts/check-parity.py`. CI runs the same check on every push
 and pull request. The in-tree implementation is removed only after production
 acceptance.
 
-Path-aware gates (`lint`, `test`, `race`, `shell`, `image`, `govulncheck`,
-`gosec`, `ci-complete`) run from `.github/workflows/ci.yml`; `make ci` is
+Path-aware gates (`go-ci / lint`, `go-ci / test`, `go-ci / race`,
+`go-ci / shell`, `go-ci / image`, `go-ci / govulncheck`, `go-ci / gosec`,
+plus the top-level `ci-complete` alias) run from
+`.github/workflows/ci.yml`; `make ci` is
 the local parity command. See [CONTRIBUTING.md](CONTRIBUTING.md).

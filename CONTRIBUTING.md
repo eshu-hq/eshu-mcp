@@ -47,7 +47,8 @@ the `shell`-only PR path cannot know about that edge on its own.
 
 ## Coverage floor
 
-The `race` job fails below `COVERAGE_FLOOR` in `ci.yml`. The floor starts
+The `go-ci / race` lane fails below the `coverage-floor` input on the
+`go-ci` call in `ci.yml`. The floor starts
 at the first measured baseline once Go code lands and may only rise toward
 the 90% target as tests land (issue #11). Never lower it, exclude packages
 silently, or delete assertions to move the number.
