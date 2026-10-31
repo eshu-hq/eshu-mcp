@@ -1,15 +1,17 @@
 # Release (Refs `eshu-hq/eshu#9521`, part of `eshu-hq/eshu#6707`)
 
-Tags `v[0-9]*` are the only publishing event. A tag push builds a
-local-only `Dockerfile` image and Trivy blocks the release on any `HIGH`
-or `CRITICAL` CVE before anything is pushed, so a failed scan leaves
-nothing pullable in GHCR. Only after the scan passes does the workflow
-push `ghcr.io/eshu-hq/eshu-mcp` for `linux/amd64,linux/arm64` and attach
-SLSA provenance plus an SPDX SBOM to the image. The workflow then cuts a
-GitHub Release carrying the SBOM. Nothing here deploys: QA wiring lives
-in `iac-eks-eshu` (the `mcpServer.image` knob) and stays
-non-authoritative until the router-surface/ranker delta (blocker 3 on
-#9521) lands.
+Pushes to `main` and `v[0-9]*` tag pushes are the publishing events.
+Either event builds a local-only `Dockerfile` image and Trivy blocks the
+release on any `HIGH` or `CRITICAL` CVE before anything is pushed, so a
+failed scan leaves nothing pullable in GHCR. Only after the scan passes
+does the workflow push `ghcr.io/eshu-hq/eshu-mcp` for
+`linux/amd64,linux/arm64` and attach SLSA provenance plus an SPDX SBOM
+to the image. Main pushes publish the moving `main`, `latest`, and
+`sha-<full-sha>` tags; tag pushes publish the semver tags and then cut a
+GitHub Release carrying the SBOM (the Release cut stays tag-only).
+Nothing here deploys: QA wiring lives in `iac-eks-eshu` (the
+`mcpServer.image` knob) and stays non-authoritative until the
+router-surface/ranker delta (blocker 3 on #9521) lands.
 
 ## Cut a release
 
@@ -49,10 +51,10 @@ link).
 - `build-and-scan`: local-only build plus the Trivy `HIGH`/`CRITICAL`
   gate; nothing is pushed, so a failed scan leaves nothing pullable. The
   SARIF uploads as an artifact for triage when the scan fails.
-- `push`: runs only after the scan passes; pushes on tag events only
-  with reproducible metadata (pinned labels, source epoch), then SLSA
-  provenance and SBOM attestations pushed to GHCR and verified back with
-  `gh attestation verify`.
+- `push`: runs only after the scan passes; pushes on tag and `main`
+  events with reproducible metadata (pinned labels, source epoch), then
+  SLSA provenance and SBOM attestations pushed to GHCR and verified back
+  with `gh attestation verify`.
 - `github-release`: the tag carries a Release with the SBOM and the
   digest in the notes, so a deploy pin never comes from a hand-typed tag.
 

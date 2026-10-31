@@ -32,7 +32,7 @@ ruleset change was needed):
 | `race` | Go sources, module, lint-config, or workflow changes, plus unclassified files, plus a coverage artifact and floor check |
 | `shell` | Shell script changes |
 | `image` | `Dockerfile` / `.dockerignore` **or Go-source** changes (build only, no push), since the image go-builds the sources |
-| Tag `v*` | `release`: multi-arch push to `ghcr.io/eshu-hq/eshu-mcp` with provenance, SBOM, Trivy gate, GitHub Release (see `docs/release.md`) |
+| Tag `v*`, push to `main` | `release`: multi-arch push to `ghcr.io/eshu-hq/eshu-mcp` with provenance, SBOM, Trivy gate; GitHub Release on tags only (see `docs/release.md`) |
 | `govulncheck` | Dependency changes, pushes, weekly schedule, manual dispatch |
 | `gosec` | Pushes, weekly schedule, and manual dispatch; advisory on PRs, SARIF to the Security tab via the caller-side job |
 | `ci-complete` | Always; fails on any needed lane failure, passes on legitimate skips |
