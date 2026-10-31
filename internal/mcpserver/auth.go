@@ -114,6 +114,7 @@ func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge str
 			}
 			principal := ""
 			denial := DenyNone
+			outcome, iss := "", ""
 			if verifier == nil {
 				var ok bool
 				principal, ok = edgeAuth(sharedKey, header)
@@ -121,7 +122,8 @@ func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge str
 					denial = DenyUnrecognized
 				}
 			} else {
-				principal, denial = verifier.Verify(header)
+				result := verifier.Verify(header)
+				principal, denial, iss, outcome = result.Principal, result.Denial, result.Issuer, result.Outcome
 			}
 			if denial != DenyNone {
 				challenge := unrecognizedChallenge
@@ -130,8 +132,14 @@ func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge str
 				}
 				writeUnauthorizedWithChallenge(w, r, challenge)
 				if logger != nil {
-					logger.Warn("mcp transport request refused at the edge",
-						"method", r.Method, "path", r.URL.Path)
+					if outcome != "" {
+						// Monolith-identical denial line: the E2E leakage
+						// matrix scrapes iss + outcome from the edge log.
+						logger.Warn("oidc Bearer [REDACTED]", "iss", iss, "outcome", outcome)
+					} else {
+						logger.Warn("mcp transport request refused at the edge",
+							"method", r.Method, "path", r.URL.Path)
+					}
 				}
 				return
 			}
