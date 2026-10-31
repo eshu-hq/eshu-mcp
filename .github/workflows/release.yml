@@ -1,17 +1,21 @@
 # eshu-mcp release (Refs eshu-hq/eshu#9521, part of eshu-hq/eshu#6707).
 #
-# Tags `v[0-9]*` publish `ghcr.io/eshu-hq/eshu-mcp` images with SLSA
-# provenance, an SPDX SBOM, SBOM attestation, and a Trivy vulnerability
-# gate, then cut a GitHub Release carrying the SBOM. PRs never push: the
-# `image` lane in ci.yml proves the Dockerfile still builds, and this
-# workflow only pushes on tag events. A manual dispatch builds the local
-# image without scanning or pushing to prove the workflow itself works.
+# Every push to `main` and every `v[0-9]*` tag push publishes
+# `ghcr.io/eshu-hq/eshu-mcp` images with SLSA provenance, an SPDX SBOM,
+# SBOM attestation, and a Trivy vulnerability gate, then a tag push cuts
+# a GitHub Release carrying the SBOM. Main pushes publish the moving
+# `main`, `latest`, and `sha-<full-sha>` tags; tag pushes publish the
+# semver tags exactly as before. PRs never push: the `image` lane in
+# ci.yml proves the Dockerfile still builds. A manual dispatch builds the
+# local image without scanning or pushing to prove the workflow itself
+# works.
 #
 # Gate order is the safety contract: `build-and-scan` builds a local-only
 # image and fails on any HIGH/CRITICAL CVE, `push` runs only after that
 # gate passes and publishes the multi-arch image with attestations, and
-# `github-release` cuts the Release. A failed scan leaves nothing pullable
-# in GHCR because no tag is ever pushed before the scan passes.
+# `github-release` (tag events only) cuts the Release. A failed scan
+# leaves nothing pullable in GHCR because no tag is ever pushed before
+# the scan passes, on main or on a version tag.
 #
 # The Dockerfile VERSION arg stamps the tag into the binary with
 # `-ldflags "-X main.version=..."`, so the initialize handshake reports the
@@ -36,6 +40,8 @@ name: release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v[0-9]*"
   workflow_dispatch:
@@ -44,7 +50,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: image-publish-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -89,7 +95,7 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
       - name: Scan local image for HIGH/CRITICAL CVEs
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # 0.36.0
         with:
           image-ref: ${{ env.SCAN_IMAGE_REF }}
@@ -108,7 +114,7 @@ jobs:
 
   push:
     needs: [build-and-scan]
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -129,8 +135,9 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract metadata
-        id: meta
+      - name: Extract metadata (tag events)
+        id: meta-tag
+        if: github.ref_type == 'tag'
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -139,9 +146,19 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha,prefix=sha-,format=long
+      - name: Extract metadata (main-branch pushes)
+        id: meta-branch
+        if: github.ref == 'refs/heads/main'
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=main
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=long
       - name: Validate version stamp
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
         run: |
           # The Dockerfile interpolates VERSION into a shell-form RUN for
           # ldflags, so refuse anything but tag/sha characters before the
@@ -157,7 +174,7 @@ jobs:
         id: labels
         run: |
           CREATED="$(date -u -d "@${{ steps.epoch.outputs.epoch }}" '+%Y-%m-%dT%H:%M:%SZ')"
-          printf '%s\n' '${{ steps.meta.outputs.labels }}' > /tmp/labels.txt
+          { printf '%s\n' '${{ steps.meta-tag.outputs.labels }}'; printf '%s\n' '${{ steps.meta-branch.outputs.labels }}'; } > /tmp/labels.txt
           sed -i "s|org\\.opencontainers\\.image\\.created=.*|org.opencontainers.image.created=${CREATED}|" /tmp/labels.txt
           { echo 'labels<<EOF'; cat /tmp/labels.txt; echo 'EOF'; } >> "${GITHUB_OUTPUT}"
       - name: Build and push image
@@ -168,9 +185,11 @@ jobs:
           file: ./Dockerfile
           push: true
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
           provenance: false
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta-tag.outputs.tags }}
+            ${{ steps.meta-branch.outputs.tags }}
           labels: ${{ steps.labels.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

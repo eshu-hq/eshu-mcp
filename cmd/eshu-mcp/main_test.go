@@ -351,3 +351,35 @@ func TestReleaseWorkflowGatesPushOnTrivyScan(t *testing.T) {
 		t.Error("conditional push before the scan: the push must run only after the Trivy gate passes")
 	}
 }
+
+// TestReleaseWorkflowPublishesMainBranchImages pins the main-branch
+// publishing contract: pushes to main publish the moving main, latest,
+// and sha-long tags through the same scan-gated push job as version
+// tags, while the GitHub Release cut stays tag-only.
+func TestReleaseWorkflowPublishesMainBranchImages(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/release.yml"))
+	if err != nil {
+		t.Fatalf("read release.yml: %v", err)
+	}
+	body := string(raw)
+
+	if !strings.Contains(body, "- main") {
+		t.Error("release.yml has no main push trigger: pushes to main publish nothing")
+	}
+	if !strings.Contains(body, "refs/heads/main") {
+		t.Error("release.yml never selects refs/heads/main: the push job still runs on tag events only")
+	}
+	for _, want := range []string{"type=raw,value=main", "type=raw,value=latest", "type=sha,prefix=sha-,format=long"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("release.yml has no %q: main pushes miss a moving tag", want)
+		}
+	}
+	if !strings.Contains(body, "type=semver,pattern={{version}}") {
+		t.Error("release.yml lost the semver tag metadata: tag-event output must stay byte-identical")
+	}
+	if !strings.Contains(body, "needs: [build-and-scan]") {
+		t.Error("no job needs build-and-scan: main-branch images must wait for the Trivy gate too")
+	}
+}
