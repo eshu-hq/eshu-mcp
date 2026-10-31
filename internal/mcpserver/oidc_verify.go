@@ -1,16 +1,12 @@
 package mcpserver
 
 // Edge OIDC verification: the door check. When discovery is configured,
-// every Bearer-shaped credential is verified: a JWT must carry a
-// recognized issuer, an audience matching the resource, a live expiry, a
-// present subject, and a signature from the issuer's own JWKS origin before
-// it may proceed. Anything else is refused at the edge before dispatch,
-// because core admission on a forwarded call cannot protect the locally
-// served surface (tools/list, discovery) that never dispatches.
-// Credentials under any other scheme keep the intentional legacy
-// pass-through — the edge cannot verify what has no verifiable shape —
-// and core still admits on dispatch. Without discovery the legacy
-// pass-through stands for Bearer [REDACTED] well.
+// every Bearer-shaped credential is verified — recognized issuer, matching
+// audience, live expiry, present subject, signature from the issuer's own
+// JWKS origin — before it may proceed. Anything else is refused at the
+// edge, because core admission cannot protect the locally served surface
+// (tools/list, discovery) that never dispatches. Other schemes keep the
+// intentional legacy pass-through to core; without discovery, so do Bearer JWTs.
 
 import (
 	"crypto/rsa"
@@ -72,23 +68,20 @@ type TokenVerifier struct {
 
 type cachedKeys struct {
 	byKid map[string]*keyEntry
-	// negKid records kids proven absent, so one crafted token cannot
-	// trigger a refetch per request. Entries expire quickly: a rotation
-	// that adds the kid converges on the next fetch, not the next TTL.
+	// negKid records kids proven absent so one crafted token cannot
+	// refetch per request; entries expire fast so rotations converge.
 	negKid  map[string]time.Time
 	expires time.Time
 }
 
-// fetchCall is one in-flight issuer refetch. Followers wait on done
-// instead of fetching, so N concurrent unknown-kid requests cause one
-// egress fetch, not N.
+// fetchCall is one in-flight refetch; followers wait on done instead of
+// fetching, so N concurrent unknown-kid requests cause one egress fetch.
 type fetchCall struct {
 	done chan struct{}
 	err  error
 }
 
-// negKidTTL bounds a negative kid entry. Short enough that a rotation
-// lands promptly even for a kid seen before its key published.
+// negKidTTL bounds a negative kid entry so a rotation lands promptly.
 const negKidTTL = 60 * time.Second
 
 type keyEntry struct {
@@ -278,6 +271,9 @@ func (v *TokenVerifier) signingKey(iss, kid string) (any, error) {
 		if call.err != nil {
 			return nil, call.err
 		}
+		// A follower's kid stays unproven by the shared fetch: record it
+		// so it denies from cache instead of fetching on its own turn.
+		v.recordNegLocked(iss, kid)
 		return nil, fmt.Errorf("no key for kid %q", truncateForLog(kid))
 	}
 	err := v.refetch(iss)
@@ -326,9 +322,8 @@ func lookupKey(set *cachedKeys, kid string) (*keyEntry, bool) {
 	return entry, ok
 }
 
-// lookupNeg reports the negative-cache expiry for kid, if any. The caller
-// must hold v.mu; the suffix is omitted because this helper takes the set
-// instead of the verifier.
+// lookupNeg reports the negative-cache expiry for kid; the caller must
+// hold v.mu.
 func lookupNeg(set *cachedKeys, kid string) (time.Time, bool) {
 	if set == nil {
 		return time.Time{}, false
@@ -337,8 +332,8 @@ func lookupNeg(set *cachedKeys, kid string) (time.Time, bool) {
 	return deniedAt, ok
 }
 
-// joinFetchLocked joins the in-flight refetch for iss, or starts one and
-// reports leadership. Callers must hold v.mu.
+// joinFetchLocked joins the in-flight refetch for iss, or starts one.
+// Callers must hold v.mu; leadership is reported.
 func (v *TokenVerifier) joinFetchLocked(iss string) (*fetchCall, bool) {
 	if call, ok := v.inflight[iss]; ok {
 		return call, false
@@ -404,6 +399,21 @@ func (v *TokenVerifier) refetch(iss string) error {
 		return err
 	}
 	fresh := &cachedKeys{byKid: make(map[string]*keyEntry), expires: time.Now().Add(jwksCacheTTL)}
+	v.mu.Lock()
+	// Carry unexpired negative entries across the replacement: a refetch
+	// must not resurrect per-request egress for kids already proven absent.
+	if old, ok := v.keys[iss]; ok {
+		now := time.Now()
+		for kid, until := range old.negKid {
+			if now.Before(until) {
+				if fresh.negKid == nil {
+					fresh.negKid = make(map[string]time.Time)
+				}
+				fresh.negKid[kid] = until
+			}
+		}
+	}
+	v.mu.Unlock()
 	for _, k := range set.Keys {
 		if k.Kty != "RSA" || (k.Alg != "" && k.Alg != "RS256") || k.Kid == "" {
 			continue
@@ -448,18 +458,13 @@ func (v *TokenVerifier) getJSON(url string, value any) error {
 	return nil
 }
 
-// sameOrigin reports whether raw shares the issuer's scheme and host.
-// Comparison is exact (port included): no normalization, no fallback.
+// sameOrigin reports whether raw shares the issuer's scheme and host,
+// compared exactly (port included) with no normalization or fallback.
 func sameOrigin(iss, raw string) bool {
-	iu, err := url.Parse(strings.TrimSpace(iss))
-	if err != nil {
-		return false
-	}
-	ju, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return false
-	}
-	return strings.EqualFold(iu.Scheme, ju.Scheme) && strings.EqualFold(iu.Host, ju.Host)
+	iu, iuErr := url.Parse(strings.TrimSpace(iss))
+	ju, juErr := url.Parse(strings.TrimSpace(raw))
+	return iuErr == nil && juErr == nil &&
+		strings.EqualFold(iu.Scheme, ju.Scheme) && strings.EqualFold(iu.Host, ju.Host)
 }
 
 // HTTPNonLoopbackIssuer reports whether iss is a plain-HTTP issuer on a

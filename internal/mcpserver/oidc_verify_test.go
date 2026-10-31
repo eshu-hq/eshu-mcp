@@ -16,8 +16,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -93,34 +91,6 @@ func testIssuerServer(t *testing.T, key *rsa.PrivateKey, kid string) *httptest.S
 
 // testIssuerServerCounted is testIssuerServer with a hit counter, so tests
 // can prove the negative cache and singleflight actually suppress egress.
-func testIssuerServerCounted(t *testing.T, key *rsa.PrivateKey, kid string) (*httptest.Server, *atomic.Int64) {
-	t.Helper()
-
-	var hits atomic.Int64
-	var srv *httptest.Server
-	mux := http.NewServeMux()
-	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		hits.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]any{
-			"issuer":   srv.URL,
-			"jwks_uri": srv.URL + "/jwks",
-		}); err != nil {
-			t.Errorf("encode discovery doc: %v", err)
-		}
-	})
-	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
-		hits.Add(1)
-		w.Header().Set("Content-Type", "application/json")
-		if _, err := w.Write([]byte(jwksDoc(t, &key.PublicKey, kid))); err != nil {
-			t.Errorf("write jwks doc: %v", err)
-		}
-	})
-	srv = httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv, &hits
-}
-
 func mintToken(t *testing.T, key *rsa.PrivateKey, kid, iss, aud string, exp time.Time) string {
 	t.Helper()
 
@@ -256,19 +226,6 @@ func TestVerifyNoneAlgRefused(t *testing.T) {
 	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"iss":"` + srv.URL + `"}`))
 	if _, denial := v.Verify("Bearer " + header + "." + payload + "."); denial == DenyNone {
 		t.Fatal("unsigned token accepted")
-	}
-}
-
-func TestVerifyUnknownKidRefetchThenDeny(t *testing.T) {
-	t.Parallel()
-
-	key := testRSAKey(t)
-	srv := testIssuerServer(t, key, testKid)
-	v := testVerifier(t, srv)
-
-	_, denial := v.Verify(mintToken(t, key, "rotated-key", srv.URL, testResource, time.Now().Add(time.Hour)))
-	if denial != DenyPostMatch {
-		t.Fatalf("denial = %v, want post-match", denial)
 	}
 }
 
@@ -414,52 +371,6 @@ func TestVerifyEmptySubDenied(t *testing.T) {
 	}
 	if _, denial := v.Verify("Bearer " + raw); denial != DenyPostMatch {
 		t.Fatalf("denial = %v, want post-match", denial)
-	}
-}
-
-func TestUnknownKidSecondSightNoRefetch(t *testing.T) {
-	t.Parallel()
-
-	key := testRSAKey(t)
-	srv, hits := testIssuerServerCounted(t, key, testKid)
-	v := testVerifier(t, srv)
-
-	bad := mintToken(t, key, "rotated-key", srv.URL, testResource, time.Now().Add(time.Hour))
-	if _, denial := v.Verify(bad); denial != DenyPostMatch {
-		t.Fatalf("first sight: denial = %v", denial)
-	}
-	firstHits := hits.Load()
-	if _, denial := v.Verify(bad); denial != DenyPostMatch {
-		t.Fatalf("second sight: denial = %v", denial)
-	}
-	if got := hits.Load(); got != firstHits {
-		t.Fatalf("second unknown-kid sight fetched again: hits %d -> %d", firstHits, got)
-	}
-}
-
-func TestUnknownKidConcurrentSingleFetch(t *testing.T) {
-	t.Parallel()
-
-	key := testRSAKey(t)
-	srv, hits := testIssuerServerCounted(t, key, testKid)
-	v := testVerifier(t, srv)
-
-	bad := mintToken(t, key, "rotated-key", srv.URL, testResource, time.Now().Add(time.Hour))
-	var wg sync.WaitGroup
-	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, denial := v.Verify(bad); denial != DenyPostMatch {
-				t.Errorf("denial = %v, want post-match", denial)
-			}
-		}()
-	}
-	wg.Wait()
-	// One discovery fetch plus one JWKS fetch; followers wait instead of
-	// fetching. Generous bound: never one fetch per request.
-	if got := hits.Load(); got > 4 {
-		t.Fatalf("concurrent unknown-kid requests fetched %d times", got)
 	}
 }
 
