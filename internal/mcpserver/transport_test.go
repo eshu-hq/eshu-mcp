@@ -182,7 +182,7 @@ func TestTransportEnvelope401(t *testing.T) {
 }
 
 // TestToolsListServesRegistry proves an authenticated tools/list serves the
-// full 169-tool registry in contract order with descriptions and schemas.
+// full 171-tool registry in contract order with descriptions and schemas.
 func TestToolsListServesRegistry(t *testing.T) {
 	t.Parallel()
 
@@ -193,12 +193,12 @@ func TestToolsListServesRegistry(t *testing.T) {
 	_, decoded := postMessage(t, mcp.Handler(nil), `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, "Bearer caller-key")
 	result := mustMap(t, decoded["result"])
 	tools := mustSlice(t, result["tools"])
-	if len(tools) != 169 {
-		t.Fatalf("tools/list serves %d tools, want the 169-tool registry", len(tools))
+	if len(tools) != 171 {
+		t.Fatalf("tools/list serves %d tools, want the 171-tool registry", len(tools))
 	}
 	first := mustMap(t, tools[0])
-	last := mustMap(t, tools[168])
-	if first["name"] != "find_code" || last["name"] != "search_dockerfile_installs" {
+	last := mustMap(t, tools[170])
+	if first["name"] != "find_code" || last["name"] != "list_ssm_host_inventory" {
 		t.Errorf("tools/list boundaries = %v/%v, want the registry order", first["name"], last["name"])
 	}
 	schema := mustMap(t, first["inputSchema"])

@@ -3,12 +3,12 @@ package contenttools
 import "github.com/eshu-hq/eshu-mcp/internal/routecontract"
 
 // Route selects the internal HTTP request for a content tool without
-// executing it. It reports handled only for the five tools this package
+// executing it. It reports handled only for the six tools this package
 // owns: repo-relative file read, repo-relative line-range read, indexed
-// file-content search, cached entity-source-snippet search, and bounded
-// evidence-citation hydration. Family membership is an explicit name
-// switch, never a prefix match, so a future tool spelled similarly cannot
-// be silently absorbed.
+// file-content search, cached entity-source-snippet search, bounded
+// evidence-citation hydration, and guarded PHP/Apache configuration search.
+// Family membership is an explicit name switch, never a prefix match, so a
+// future tool spelled similarly cannot be silently absorbed.
 //
 // get_entity_content is deliberately not part of this family even though
 // its registration lives beside these five in tools_content.go: its route
@@ -46,6 +46,19 @@ func Route(toolName string, args routecontract.Arguments) (routecontract.Request
 			body["cursor"] = cursor
 		}
 		return routecontract.Request{Method: "POST", Path: "/api/v0/content/files/search", Body: body}, true
+	case "search_php_configuration":
+		body := map[string]any{
+			"directive": args.String("directive"),
+			"mode":      args.String("mode"),
+			"limit":     args.IntOr("limit", 50),
+		}
+		if repoID := args.String("repo_id"); repoID != "" {
+			body["repo_id"] = repoID
+		}
+		if cursor := args.String("cursor"); cursor != "" {
+			body["cursor"] = cursor
+		}
+		return routecontract.Request{Method: "POST", Path: "/api/v0/content/php-config/search", Body: body}, true
 	case "search_dockerfile_installs":
 		body := map[string]any{"package": args.String("package"), "limit": args.IntOr("limit", 10)}
 		if repoID := args.String("repo_id"); repoID != "" {

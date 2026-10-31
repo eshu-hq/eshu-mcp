@@ -46,8 +46,8 @@ func TestResolveSweepMatchesSeed(t *testing.T) {
 		t.Fatalf("parse sweep_resolutions.json: %v", err)
 	}
 
-	if len(argsTable.Tools) != 169 {
-		t.Fatalf("sweep table covers %d tools, want all 169", len(argsTable.Tools))
+	if len(argsTable.Tools) != 171 {
+		t.Fatalf("sweep table covers %d tools, want all 171", len(argsTable.Tools))
 	}
 	for name, cases := range argsTable.Tools {
 		want, ok := expected[name]

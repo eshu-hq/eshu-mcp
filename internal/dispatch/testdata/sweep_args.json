@@ -1706,6 +1706,23 @@
           "limit": 5
         }
       }
+    ],
+    "search_php_configuration": [
+      {
+        "label": "default",
+        "arguments": {
+          "mode": "mod_php",
+          "limit": 5
+        }
+      }
+    ],
+    "list_ssm_host_inventory": [
+      {
+        "label": "default",
+        "arguments": {
+          "limit": 5
+        }
+      }
     ]
   }
 }
