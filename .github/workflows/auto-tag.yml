@@ -1,0 +1,103 @@
+# Auto-tag the next patch release (Refs eshu-hq/eshu-mcp#40).
+#
+# A PR merged to `main` carrying the `release:patch` label tags the next
+# patch version on its own, so routine patches release without the dead
+# wait on a manual `git push origin vX.Y.Z` (issue #40: #35 merged and
+# v0.2.2 waited ~6h on a manual tag push). The tag push is the only
+# publishing event: `release.yml` (trigger `v[0-9]*`) builds, scans,
+# pushes, and cuts the Release from there. Minor/major bumps and any
+# merge without the label stay manual: version judgment stays human,
+# only the routine-patch wait is automated.
+#
+# Safety contract:
+# - The job starts only for merged PRs to `main` with the label (the
+#   `if:` below), plus manual dispatches which are always dry runs:
+#   they compute and print the next tag and never push.
+# - `concurrency.group` serializes runs of this workflow, so two labeled
+#   merges cannot compute the same next tag concurrently.
+# - The script fails closed (non-zero, no tag) when there is no prior
+#   `vX.Y.Z` tag to bump from, when the merge commit is missing, or when
+#   the computed tag already exists; re-runs are idempotent because a
+#   HEAD that already carries a `v*` tag is a quiet no-op.
+# - A labeled PR from a fork fails loudly at push (read-only token):
+#   never a silent skip.
+#
+# Pinned actions (re-verify with git ls-remote when auditing; Dependabot
+# github-actions proposes bumps, weekly grouped):
+#   actions/checkout v7.0.1              3d3c42e5aac5ba805825da76410c181273ba90b1
+
+name: auto-tag
+
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag
+  cancel-in-progress: false
+
+jobs:
+  tag-patch:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && contains(github.event.pull_request.labels.*.name, 'release:patch'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Tag next patch (dry run on dispatch)
+        id: tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin >/dev/null
+          latest="$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+          if [ -z "$latest" ]; then
+            echo "no prior vX.Y.Z tag to bump from; first release stays manual" >&2
+            exit 1
+          fi
+          ver="${latest#v}"
+          major="${ver%%.*}"
+          rest="${ver#*.}"
+          minor="${rest%%.*}"
+          patch="${rest#*.}"
+          next="v${major}.${minor}.$((patch + 1))"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            target="HEAD"
+          else
+            if [ -z "$MERGE_SHA" ]; then
+              echo "merged PR has no merge commit recorded; refusing to guess the target" >&2
+              exit 1
+            fi
+            target="$MERGE_SHA"
+          fi
+          if ! git cat-file -e "${target}^{commit}" 2>/dev/null; then
+            echo "target ${target} is not a commit here; refusing to tag" >&2
+            exit 1
+          fi
+          if [ -n "$(git tag --points-at "$target" --list 'v[0-9]*')" ]; then
+            echo "target ${target} already carries a version tag; nothing to do"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git rev-parse -q --verify "refs/tags/${next}" >/dev/null; then
+            echo "tag ${next} already exists; fetch latest tags and rerun" >&2
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "dry run: would tag ${target} as ${next} (from PR #${PR_NUMBER:-n/a})"
+            echo "tag=${next}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" \
+            tag -a "$next" "$target" -m "auto-tag ${next} for PR #${PR_NUMBER} (release:patch)"
+          git push origin "$next"
+          echo "tagged ${target} as ${next}"
+          echo "tag=${next}" >> "$GITHUB_OUTPUT"
