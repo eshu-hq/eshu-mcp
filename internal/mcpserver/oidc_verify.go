@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -82,7 +83,20 @@ const (
 	outcomeExpired       = "expired"
 	outcomeBadSignature  = "bad_signature"
 	outcomeMalformed     = "malformed"
+	// outcomeJWKSFetchFailure fires when the issuer is trusted but its
+	// keys cannot be loaded (issuer down): the token is unverifiable,
+	// which core distinguishes from a bad signature.
+	outcomeJWKSFetchFailure = "jwks_fetch_failure"
 )
+
+// fetchError marks a verification failure caused by being unable to load
+// the issuer's keys, as opposed to a token that fails against loaded keys.
+// Error() delegates so the message is unchanged; callers match with
+// errors.As, which traverses the jwt library's wrapping.
+type fetchError struct{ err error }
+
+func (e *fetchError) Error() string { return e.err.Error() }
+func (e *fetchError) Unwrap() error { return e.err }
 
 // VerifyResult is one door decision: DenyNone admits Principal, any other
 // kind refuses with Outcome logged and Issuer attributed ("" when the token
@@ -120,8 +134,14 @@ func (v *TokenVerifier) Verify(authHeader string) VerifyResult {
 	// and attribution must survive crypto failure.
 	claims, err := v.parseVerified(raw)
 	if err != nil {
-		// Recognized issuer, unverifiable token: the keys are down or the
-		// crypto failed. Fail closed in the signature bucket.
+		// Recognized issuer, unverifiable token: fail closed. An issuer
+		// whose keys cannot be loaded lands in the fetch bucket (core's
+		// jwks_fetch_failure); a token that fails against loaded keys
+		// lands in the signature bucket.
+		var fetchErr *fetchError
+		if errors.As(err, &fetchErr) {
+			return VerifyResult{Denial: DenyPostMatch, Issuer: iss, Outcome: outcomeJWKSFetchFailure}
+		}
 		return VerifyResult{Denial: DenyPostMatch, Issuer: iss, Outcome: outcomeBadSignature}
 	}
 	// A principal is the edge identity bound to SSE sessions: two subjects
@@ -168,7 +188,9 @@ func classifyToken(raw, resource string, issuers map[string]bool) (DenialKind, s
 		return DenyPostMatch, outcomeExpired, iss
 	}
 	if nbf, ok := claims["nbf"].(float64); ok && now.Add(verifyLeeway).Before(time.Unix(int64(nbf), 0)) {
-		return DenyPostMatch, outcomeExpired, iss
+		// Not yet valid is malformed, not expired: core maps only
+		// *oidc.TokenExpiredError to expired and defaults the rest.
+		return DenyPostMatch, outcomeMalformed, iss
 	}
 	return DenyNone, "", iss
 }
@@ -263,7 +285,7 @@ func (v *TokenVerifier) signingKey(iss, kid string) (any, error) {
 			return entry.key, nil
 		}
 		if call.err != nil {
-			return nil, call.err
+			return nil, &fetchError{call.err}
 		}
 		// A follower's kid stays unproven by the shared fetch: record it
 		// so it denies from cache instead of fetching on its own turn.
@@ -282,7 +304,7 @@ func (v *TokenVerifier) signingKey(iss, kid string) (any, error) {
 	}
 	v.finishFetchLocked(iss, call, err)
 	if err != nil {
-		return nil, err
+		return nil, &fetchError{err}
 	}
 	return nil, fmt.Errorf("no key for kid %q", truncateForLog(kid))
 }
