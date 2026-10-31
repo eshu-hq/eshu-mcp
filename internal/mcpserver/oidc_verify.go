@@ -1,12 +1,16 @@
 package mcpserver
 
 // Edge OIDC verification: the door check. When discovery is configured,
-// a Bearer JWT must carry a recognized issuer, an audience matching the
-// resource, a live expiry, and a signature from the issuer's JWKS. Anything
-// else is refused at the edge before dispatch, because core admission on a
-// forwarded call cannot protect the locally served surface (tools/list,
-// discovery) that never dispatches. Deployments without discovery keep the
-// legacy behavior: any present credential passes and core admits.
+// every Bearer-shaped credential is verified: a JWT must carry a
+// recognized issuer, an audience matching the resource, a live expiry, a
+// present subject, and a signature from the issuer's own JWKS origin before
+// it may proceed. Anything else is refused at the edge before dispatch,
+// because core admission on a forwarded call cannot protect the locally
+// served surface (tools/list, discovery) that never dispatches.
+// Credentials under any other scheme keep the intentional legacy
+// pass-through — the edge cannot verify what has no verifiable shape —
+// and core still admits on dispatch. Without discovery the legacy
+// pass-through stands for Bearer [REDACTED] well.
 
 import (
 	"crypto/rsa"
@@ -19,6 +23,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -60,14 +65,31 @@ type TokenVerifier struct {
 
 	client *http.Client
 
-	mu   sync.Mutex
-	keys map[string]*cachedKeys
+	mu       sync.Mutex
+	keys     map[string]*cachedKeys
+	inflight map[string]*fetchCall
 }
 
 type cachedKeys struct {
-	byKid   map[string]*keyEntry
+	byKid map[string]*keyEntry
+	// negKid records kids proven absent, so one crafted token cannot
+	// trigger a refetch per request. Entries expire quickly: a rotation
+	// that adds the kid converges on the next fetch, not the next TTL.
+	negKid  map[string]time.Time
 	expires time.Time
 }
+
+// fetchCall is one in-flight issuer refetch. Followers wait on done
+// instead of fetching, so N concurrent unknown-kid requests cause one
+// egress fetch, not N.
+type fetchCall struct {
+	done chan struct{}
+	err  error
+}
+
+// negKidTTL bounds a negative kid entry. Short enough that a rotation
+// lands promptly even for a kid seen before its key published.
+const negKidTTL = 60 * time.Second
 
 type keyEntry struct {
 	key any
@@ -97,18 +119,19 @@ func NewTokenVerifier(resource string, issuers []string, sharedKey string) *Toke
 // verify what has no verifiable shape, and core still admits on dispatch.
 func (v *TokenVerifier) Verify(authHeader string) (string, DenialKind) {
 	credential := strings.TrimSpace(authHeader)
-	const prefix = "Bearer "
-	if !strings.HasPrefix(credential, prefix) {
-		if credential == "Bearer" {
-			return "", DenyUnrecognized
-		}
+	// RFC 7235 schemes are case-insensitive: every Bearer-shaped
+	// credential is verified, whatever its case. Only a genuinely
+	// different scheme keeps the legacy pass-through.
+	scheme, rest, _ := strings.Cut(credential, " ")
+	if !strings.EqualFold(scheme, "Bearer") {
 		sum := sha256.Sum256([]byte(credential))
 		return "fwd:" + hex.EncodeToString(sum[:]), DenyNone
 	}
-	if v.sharedKey != "" && subtle.ConstantTimeCompare([]byte(credential), []byte(prefix+v.sharedKey)) == 1 {
+	raw := strings.TrimSpace(rest)
+	const prefix = "Bearer "
+	if v.sharedKey != "" && subtle.ConstantTimeCompare([]byte(prefix+raw), []byte(prefix+v.sharedKey)) == 1 {
 		return "shared", DenyNone
 	}
-	raw := strings.TrimSpace(strings.TrimPrefix(credential, prefix))
 	if kind := classifyToken(raw, v.resource, v.issuers); kind != DenyNone {
 		return "", kind
 	}
@@ -116,12 +139,19 @@ func (v *TokenVerifier) Verify(authHeader string) (string, DenialKind) {
 	if err != nil {
 		return "", DenyPostMatch
 	}
+	// A principal is the edge identity bound to SSE sessions: two subjects
+	// must never share one. Real issuers always set sub, so its absence
+	// denies rather than minting an issuer-constant principal.
+	if claimString(claims, "sub") == "" {
+		return "", DenyPostMatch
+	}
 	sum := sha256.Sum256([]byte(claimString(claims, "iss") + "\x00" + claimString(claims, "sub")))
 	return "jwt:" + hex.EncodeToString(sum[:]), DenyNone
 }
 
 // claimString reads one optional string claim, returning "" when absent or
-// mistyped. Callers treat "" as unmatched, never as verified identity.
+// mistyped. Verify denies an empty sub outright; classification treats a
+// missing iss as unmatched. No caller admits on "".
 func claimString(claims jwt.MapClaims, key string) string {
 	value, ok := claims[key].(string)
 	if !ok {
@@ -220,33 +250,68 @@ func kidOf(token *jwt.Token) string {
 	return kid
 }
 
-// signingKey resolves the verification key for iss, refetching once when a
-// cached set lacks kid so a rotation converges on the next request.
+// signingKey resolves the verification key for iss. A fresh cache answers
+// inline; otherwise exactly one goroutine refetches while the rest wait,
+// and a kid proven absent denies from the negative cache without egress.
 func (v *TokenVerifier) signingKey(iss, kid string) (any, error) {
 	if !v.issuers[iss] {
 		return nil, fmt.Errorf("unknown issuer")
 	}
-	if entry, ok := v.cachedKey(iss, kid); ok {
+	v.mu.Lock()
+	if entry, ok := lookupKey(v.freshSetLocked(iss), kid); ok {
+		v.mu.Unlock()
 		return entry.key, nil
 	}
-	if err := v.refetch(iss); err != nil {
+	if deniedAt, ok := lookupNeg(v.freshSetLocked(iss), kid); ok && time.Now().Before(deniedAt) {
+		v.mu.Unlock()
+		return nil, fmt.Errorf("no key for kid %q", truncateForLog(kid))
+	}
+	call, leader := v.joinFetchLocked(iss)
+	v.mu.Unlock()
+	if !leader {
+		<-call.done
+		v.mu.Lock()
+		defer v.mu.Unlock()
+		if entry, ok := lookupKey(v.freshSetLocked(iss), kid); ok {
+			return entry.key, nil
+		}
+		if call.err != nil {
+			return nil, call.err
+		}
+		return nil, fmt.Errorf("no key for kid %q", truncateForLog(kid))
+	}
+	err := v.refetch(iss)
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if err == nil {
+		if entry, ok := lookupKey(v.freshSetLocked(iss), kid); ok {
+			v.finishFetchLocked(iss, call, nil)
+			return entry.key, nil
+		}
+		v.recordNegLocked(iss, kid)
+	}
+	v.finishFetchLocked(iss, call, err)
+	if err != nil {
 		return nil, err
-	}
-	if entry, ok := v.cachedKey(iss, kid); ok {
-		return entry.key, nil
 	}
 	return nil, fmt.Errorf("no key for kid %q", truncateForLog(kid))
 }
 
-// cachedKey returns the key for kid when the cached set is fresh. An empty
-// kid matches only a single-key set, so a kidless token cannot smuggle
-// itself past a multi-key issuer.
-func (v *TokenVerifier) cachedKey(iss, kid string) (*keyEntry, bool) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
+// freshSetLocked returns the cached set for iss, or nil when absent or
+// expired. Callers must hold v.mu.
+func (v *TokenVerifier) freshSetLocked(iss string) *cachedKeys {
 	set, ok := v.keys[iss]
 	if !ok || time.Now().After(set.expires) {
+		return nil
+	}
+	return set
+}
+
+// lookupKey returns the key for kid in a fresh set. An empty kid matches
+// only a single-key set, so a kidless token cannot smuggle itself past a
+// multi-key issuer.
+func lookupKey(set *cachedKeys, kid string) (*keyEntry, bool) {
+	if set == nil {
 		return nil, false
 	}
 	if kid == "" {
@@ -259,6 +324,52 @@ func (v *TokenVerifier) cachedKey(iss, kid string) (*keyEntry, bool) {
 	}
 	entry, ok := set.byKid[kid]
 	return entry, ok
+}
+
+// lookupNeg reports the negative-cache expiry for kid, if any. The caller
+// must hold v.mu; the suffix is omitted because this helper takes the set
+// instead of the verifier.
+func lookupNeg(set *cachedKeys, kid string) (time.Time, bool) {
+	if set == nil {
+		return time.Time{}, false
+	}
+	deniedAt, ok := set.negKid[kid]
+	return deniedAt, ok
+}
+
+// joinFetchLocked joins the in-flight refetch for iss, or starts one and
+// reports leadership. Callers must hold v.mu.
+func (v *TokenVerifier) joinFetchLocked(iss string) (*fetchCall, bool) {
+	if call, ok := v.inflight[iss]; ok {
+		return call, false
+	}
+	call := &fetchCall{done: make(chan struct{})}
+	if v.inflight == nil {
+		v.inflight = make(map[string]*fetchCall)
+	}
+	v.inflight[iss] = call
+	return call, true
+}
+
+// finishFetchLocked publishes a finished refetch and wakes the followers.
+// Callers must hold v.mu.
+func (v *TokenVerifier) finishFetchLocked(iss string, call *fetchCall, err error) {
+	call.err = err
+	delete(v.inflight, iss)
+	close(call.done)
+}
+
+// recordNegLocked remembers that kid is absent after a successful fetch.
+// Callers must hold v.mu.
+func (v *TokenVerifier) recordNegLocked(iss, kid string) {
+	set := v.freshSetLocked(iss)
+	if set == nil {
+		return
+	}
+	if set.negKid == nil {
+		set.negKid = make(map[string]time.Time)
+	}
+	set.negKid[kid] = time.Now().Add(negKidTTL)
 }
 
 // refetch reloads iss from its OIDC discovery document. The issuer comes
@@ -274,6 +385,11 @@ func (v *TokenVerifier) refetch(iss string) error {
 	}
 	if strings.TrimSpace(doc.JWKSURI) == "" {
 		return fmt.Errorf("issuer has no jwks_uri")
+	}
+	// The keys must come from the issuer's own origin: a discovery
+	// document pointing elsewhere hands signature trust to a stranger.
+	if !sameOrigin(iss, doc.JWKSURI) {
+		return fmt.Errorf("jwks_uri outside issuer origin")
 	}
 	var set struct {
 		Keys []struct {
@@ -330,6 +446,32 @@ func (v *TokenVerifier) getJSON(url string, value any) error {
 		return err
 	}
 	return nil
+}
+
+// sameOrigin reports whether raw shares the issuer's scheme and host.
+// Comparison is exact (port included): no normalization, no fallback.
+func sameOrigin(iss, raw string) bool {
+	iu, err := url.Parse(strings.TrimSpace(iss))
+	if err != nil {
+		return false
+	}
+	ju, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(iu.Scheme, ju.Scheme) && strings.EqualFold(iu.Host, ju.Host)
+}
+
+// HTTPNonLoopbackIssuer reports whether iss is a plain-HTTP issuer on a
+// non-loopback host. Such issuers work — the E2E mock IdP is one — but
+// their JWKS travels unauthenticated, so the operator is warned loudly at
+// wiring time. Prefer https issuers in any network you do not control.
+func HTTPNonLoopbackIssuer(iss string) bool {
+	u, err := url.Parse(strings.TrimSpace(iss))
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return strings.EqualFold(u.Scheme, "http") && !isLoopbackHost(u.Hostname())
 }
 
 // rsaKey decodes one RSA JWK. Only public material is ever handled; E must

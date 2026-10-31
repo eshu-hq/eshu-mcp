@@ -172,6 +172,12 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 		// Without discovery the legacy pass-through stands and core admits.
 		var verifier *mcpserver.TokenVerifier
 		if discovery.Enabled() {
+			for _, iss := range discovery.Issuers {
+				if mcpserver.HTTPNonLoopbackIssuer(iss) {
+					logOut.Warn("eshu-mcp: issuer uses plain HTTP outside loopback; its JWKS travels unauthenticated — prefer https",
+						"issuer", iss)
+				}
+			}
 			verifier = mcpserver.NewTokenVerifier(discovery.Resource, discovery.Issuers, apiKey)
 		}
 		opts = append(opts, mcpserver.WithTransportAuth(
