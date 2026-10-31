@@ -368,8 +368,10 @@ func TestVerifyEmptySubDenied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sign token: %v", err)
 	}
-	if result := v.Verify("Bearer " + raw); result.Denial != DenyPostMatch {
-		t.Fatalf("result.Denial = %v, want post-match", result.Denial)
+	result := v.Verify("Bearer " + raw)
+	if result.Denial != DenyPostMatch || result.Outcome != "malformed" || result.Issuer != srv.URL {
+		t.Fatalf("result = (%v, %q, %q), want (post-match, malformed, %q)",
+			result.Denial, result.Outcome, result.Issuer, srv.URL)
 	}
 }
 
