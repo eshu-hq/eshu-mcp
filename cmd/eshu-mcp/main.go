@@ -167,8 +167,15 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 		}),
 	}
 	if authEnforced {
+		// The door check runs exactly when discovery is configured: the
+		// issuers are known, so Bearer JWTs can be verified at the edge.
+		// Without discovery the legacy pass-through stands and core admits.
+		var verifier *mcpserver.TokenVerifier
+		if discovery.Enabled() {
+			verifier = mcpserver.NewTokenVerifier(discovery.Resource, discovery.Issuers, apiKey)
+		}
 		opts = append(opts, mcpserver.WithTransportAuth(
-			mcpserver.EdgeAuthMiddlewareWithChallenge(apiKey, discovery.ChallengeValue(), logOut)))
+			mcpserver.EdgeAuthMiddlewareWithVerifier(apiKey, discovery, verifier, logOut)))
 	}
 	// The escape-hatch caller passes apiKey "" with transport auth off: every
 	// dispatch still forwards the caller credential to core for admission.
