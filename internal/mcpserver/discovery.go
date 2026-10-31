@@ -44,11 +44,11 @@ const (
 	AuthorizationServersEnv  = "ESHU_AUTH_AUTHORIZATION_SERVERS"
 	// #nosec G101 -- the value is the operator env var name the monolith
 	// also reads, not a credential: no secret material appears here.
-	ScopedTokensFileEnv      = "ESHU_SCOPED_TOKENS_FILE"
-	discoveryCacheControl    = "public, max-age=60"
-	discoveryRoute           = "GET /.well-known/oauth-protected-resource"
-	discoveryRouteSuffix     = "GET /.well-known/oauth-protected-resource/{rest...}"
-	discoveryContentType     = "application/json"
+	ScopedTokensFileEnv   = "ESHU_SCOPED_TOKENS_FILE"
+	discoveryCacheControl = "public, max-age=60"
+	discoveryRoute        = "GET /.well-known/oauth-protected-resource"
+	discoveryRouteSuffix  = "GET /.well-known/oauth-protected-resource/{rest...}"
+	discoveryContentType  = "application/json"
 )
 
 // OAuthProtectedResourceMetadata is the RFC 9728 section 2 document the
