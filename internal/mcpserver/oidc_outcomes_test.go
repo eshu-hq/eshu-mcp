@@ -42,11 +42,12 @@ func TestOutcomeConstantsMatchMonolith(t *testing.T) {
 	t.Parallel()
 
 	for constant, literal := range map[string]string{
-		outcomeUnknownIssuer: "unknown_issuer",
-		outcomeWrongAudience: "wrong_audience",
-		outcomeExpired:       "expired",
-		outcomeBadSignature:  "bad_signature",
-		outcomeMalformed:     "malformed",
+		outcomeUnknownIssuer:    "unknown_issuer",
+		outcomeWrongAudience:    "wrong_audience",
+		outcomeExpired:          "expired",
+		outcomeBadSignature:     "bad_signature",
+		outcomeMalformed:        "malformed",
+		outcomeJWKSFetchFailure: "jwks_fetch_failure",
 	} {
 		if constant != literal {
 			t.Fatalf("outcome constant %q != monolith literal %q", constant, literal)
@@ -108,9 +109,9 @@ func TestVerifyOutcomeVocabulary(t *testing.T) {
 		{"unknown issuer", mintToken(t, testRSAKey(t), "other", "http://unknown/", testResource, live.Add(time.Hour)), "unknown_issuer", "http://unknown/", DenyUnrecognized},
 		{"malformed", "Bearer not.a.jwt", "malformed", "", DenyUnrecognized},
 		{"expired", mintToken(t, key, testKid, srv.URL, testResource, live.Add(-time.Hour)), "expired", srv.URL, DenyPostMatch},
-		{"future nbf", mintClaims(func(c jwt.MapClaims) { c["nbf"] = live.Add(time.Hour).Unix() }), "expired", srv.URL, DenyPostMatch},
+		{"future nbf", mintClaims(func(c jwt.MapClaims) { c["nbf"] = live.Add(time.Hour).Unix() }), "malformed", srv.URL, DenyPostMatch},
 		{"empty sub", mintClaims(func(c jwt.MapClaims) { delete(c, "sub") }), "malformed", srv.URL, DenyPostMatch},
-		{"issuer down", downHeader, "bad_signature", downIss, DenyPostMatch},
+		{"issuer down", downHeader, "jwks_fetch_failure", downIss, DenyPostMatch},
 		{"bad signature", mintToken(t, testRSAKey(t), testKid, srv.URL, testResource, live.Add(time.Hour)), "bad_signature", srv.URL, DenyPostMatch},
 		{"unsigned full claims", unsigned(), "bad_signature", srv.URL, DenyPostMatch},
 	}
