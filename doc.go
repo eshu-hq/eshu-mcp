@@ -2,3 +2,5 @@
 // binary serves. Names and order come from the pinned contract file, so any
 // drift between the served registry and the contract fails the build.
 package registry
+
+// Fork-probe comment (unmerged): makes this a Go-source PR so fork lanes run.
