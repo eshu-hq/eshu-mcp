@@ -42,6 +42,8 @@ const (
 	PreregisteredClientIDEnv = "ESHU_AUTH_PREREGISTERED_CLIENT_ID"
 	ResourceURIEnv           = "ESHU_AUTH_RESOURCE_URI"
 	AuthorizationServersEnv  = "ESHU_AUTH_AUTHORIZATION_SERVERS"
+	// #nosec G101 -- the value is the operator env var name the monolith
+	// also reads, not a credential: no secret material appears here.
 	ScopedTokensFileEnv      = "ESHU_SCOPED_TOKENS_FILE"
 	discoveryCacheControl    = "public, max-age=60"
 	discoveryRoute           = "GET /.well-known/oauth-protected-resource"
