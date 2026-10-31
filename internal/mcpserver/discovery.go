@@ -159,10 +159,11 @@ func (d DiscoveryConfig) handleMetadataSuffix(w http.ResponseWriter, r *http.Req
 	d.serveMetadata(w, r)
 }
 
-func (d DiscoveryConfig) serveMetadata(w http.ResponseWriter, _ *http.Request) {
+func (d DiscoveryConfig) serveMetadata(w http.ResponseWriter, r *http.Request) {
 	if !d.Enabled() {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusNotFound)
+		// Uniform with handleMetadataSuffix: the standard NotFound body,
+		// so every disabled discovery path refuses the same shape.
+		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Cache-Control", discoveryCacheControl)

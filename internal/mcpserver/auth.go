@@ -4,8 +4,9 @@ package mcpserver
 // go/internal/query/querycontract/unauthorized.go at 9922b49. The 401 body,
 // headers, content type, envelope negotiation, and correlation-id behavior
 // are byte-identical to core's WriteUnauthorized; the WWW-Authenticate
-// challenge is the bare Bearer challenge (the destination wires no OAuth
-// discovery). The credential model differs by necessity and is recorded in
+// challenge is the bare Bearer challenge augmented with the RFC 9728
+// resource_metadata and scope directives when OAuth discovery is enabled
+// (see DiscoveryConfig). The credential model differs by necessity and is recorded in
 // docs/parity.md: the edge refuses a headerless request, binds SSE sessions
 // to the presenting principal, and forwards the caller credential verbatim
 // to core on every dispatch, where core remains the admission authority.
