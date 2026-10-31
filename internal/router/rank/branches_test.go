@@ -16,8 +16,24 @@ func TestCloneValueBranches(t *testing.T) {
 	if !reflect.DeepEqual(got, nested) {
 		t.Fatalf("clone = %#v", got)
 	}
-	got["a"].([]any)[0].(map[string]any)["b"] = 2
-	if nested["a"].([]any)[0].(map[string]any)["b"] != 1 {
+	inner, ok := got["a"].([]any)
+	if !ok || len(inner) == 0 {
+		t.Fatalf("clone list = %#v", got["a"])
+	}
+	innerMap, ok := inner[0].(map[string]any)
+	if !ok {
+		t.Fatalf("clone item = %#v", inner[0])
+	}
+	innerMap["b"] = 2
+	origInner, ok := nested["a"].([]any)
+	if !ok || len(origInner) == 0 {
+		t.Fatalf("orig list = %#v", nested["a"])
+	}
+	origMap, ok := origInner[0].(map[string]any)
+	if !ok {
+		t.Fatalf("orig item = %#v", origInner[0])
+	}
+	if origMap["b"] != 1 {
 		t.Fatal("clone shares nested state")
 	}
 	if got := cloneValue([]string{"a"}); !reflect.DeepEqual(got, []string{"a"}) {

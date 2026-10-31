@@ -92,8 +92,13 @@ func TestRunHTTPServesHealthUntilCancel(t *testing.T) {
 	for {
 		resp, err := http.Get("http://" + addr + "/health")
 		if err == nil {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatalf("read body: %v", err)
+			}
+			if err := resp.Body.Close(); err != nil {
+				t.Fatalf("close body: %v", err)
+			}
 			if resp.StatusCode != 200 || string(body) != `{"status":"ok"}` {
 				t.Fatalf("health = %d %q", resp.StatusCode, body)
 			}
@@ -133,7 +138,7 @@ func TestHandlerMountsExtra(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 	mux := s.Handler(extra)
-	req, _ := http.NewRequest("GET", "/extra", nil)
+	req := httptest.NewRequest("GET", "/extra", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusTeapot {

@@ -114,7 +114,7 @@ func TestStringValuesFilters(t *testing.T) {
 	if got := stringValues(args, "ks"); len(got) != 1 || got[0] != "a" {
 		t.Fatalf(" = %#v", got)
 	}
-	if got := stringValues(args, "missing"); got != nil && len(got) != 0 {
+	if got := stringValues(args, "missing"); len(got) != 0 {
 		t.Fatalf("missing = %#v", got)
 	}
 }

@@ -6,6 +6,15 @@ import (
 	"github.com/eshu-hq/eshu-mcp/internal/routecontract"
 )
 
+func mustBody(t *testing.T, req routecontract.Request) map[string]any {
+	t.Helper()
+	body, ok := req.Body.(map[string]any)
+	if !ok {
+		t.Fatalf("body type %T", req.Body)
+	}
+	return body
+}
+
 func TestTypedStoryRequestShape(t *testing.T) {
 	t.Parallel()
 
@@ -34,7 +43,10 @@ func TestTypedStoryRequestShape(t *testing.T) {
 		t.Fatalf("min_confidence = %#v", body["min_confidence"])
 	}
 	def := analyzeCodeRelationshipsTypedStoryRequest(routecontract.Arguments{}, "q", "d", "r")
-	defBody := def.Body.(map[string]any)
+	defBody, ok := def.Body.(map[string]any)
+	if !ok {
+		t.Fatalf("body type %T", def.Body)
+	}
 	if defBody["max_depth"] != 5 || defBody["limit"] != 25 {
 		t.Fatalf("defaults = %#v", defBody)
 	}
@@ -86,7 +98,7 @@ func TestResolveQueryTypeSweep(t *testing.T) {
 		if req.Path != "/api/v0/code/relationships/story" {
 			t.Fatalf("%s path = %s", queryType, req.Path)
 		}
-		if body := req.Body.(map[string]any); body["direction"] != direction {
+		if body := mustBody(t, req); body["direction"] != direction {
 			t.Fatalf("%s direction = %#v", queryType, body["direction"])
 		}
 	}
@@ -99,7 +111,7 @@ func TestResolveQueryTypeSweep(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", queryType, err)
 		}
-		if body := req.Body.(map[string]any); body["relationship_type"] != rel {
+		if body := mustBody(t, req); body["relationship_type"] != rel {
 			t.Fatalf("%s rel = %#v", queryType, body["relationship_type"])
 		}
 	}
@@ -110,7 +122,7 @@ func TestResolveQueryTypeSweep(t *testing.T) {
 	if dead.Path != "/api/v0/code/dead-code" {
 		t.Fatalf("dead path = %s", dead.Path)
 	}
-	if body := dead.Body.(map[string]any); body["repo_id"] != "r" {
+	if body := mustBody(t, dead); body["repo_id"] != "r" {
 		t.Fatalf("dead body = %#v", body)
 	}
 	fallback, err := resolveAnalyzeCodeRelationshipsRequest(routecontract.Arguments{"query_type": "who_modifies", "target": "T"})
@@ -127,7 +139,7 @@ func TestResolveQueryTypeSweep(t *testing.T) {
 	if chain.Path != "/api/v0/code/call-chain" {
 		t.Fatalf("chain path = %s", chain.Path)
 	}
-	if body := chain.Body.(map[string]any); body["start"] != "A" || body["end"] != "B" {
+	if body := mustBody(t, chain); body["start"] != "A" || body["end"] != "B" {
 		t.Fatalf("chain body = %#v", body)
 	}
 	if _, err := resolveAnalyzeCodeRelationshipsRequest(routecontract.Arguments{"query_type": "call_chain", "target": "noarrow"}); err == nil {
@@ -137,7 +149,7 @@ func TestResolveQueryTypeSweep(t *testing.T) {
 	if err != nil {
 		t.Fatalf("xchain: %v", err)
 	}
-	if body := xchain.Body.(map[string]any); body["cross_repo"] != true {
+	if body := mustBody(t, xchain); body["cross_repo"] != true {
 		t.Fatalf("xchain cross_repo = %#v", body)
 	}
 }
