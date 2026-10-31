@@ -55,3 +55,5 @@ Path-aware gates (`go-ci / lint`, `go-ci / test`, `go-ci / race`,
 plus the top-level `ci-complete` alias) run from
 `.github/workflows/ci.yml`; `make ci` is
 the local parity command. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+<!-- Fork probe line (unmerged): fork-PR lane proof for the CI-gates epic. -->
