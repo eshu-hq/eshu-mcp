@@ -132,14 +132,14 @@ func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge str
 				}
 				writeUnauthorizedWithChallenge(w, r, challenge)
 				if logger != nil {
-					if outcome != "" {
-						// Monolith-identical denial line: the E2E leakage
-						// matrix scrapes iss + outcome from the edge log.
-						logger.Warn("oidc Bearer [REDACTED]", "iss", iss, "outcome", outcome)
-					} else {
-						logger.Warn("mcp transport request refused at the edge",
-							"method", r.Method, "path", r.URL.Path)
-					}
+					// Every denial reaching this block carries an outcome:
+					// headerless returns earlier and edgeAuth denies only
+					// empty credentials (also earlier), while Verify sets
+					// Outcome on every denial return. Method/path stay on
+					// the line: the E2E scraper reads named keys, and the
+					// operator keeps the request context.
+					logger.Warn("oidc Bearer [REDACTED]", "iss", iss, "outcome", outcome,
+						"method", r.Method, "path", r.URL.Path)
 				}
 				return
 			}

@@ -14,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type lockedBuffer struct {
@@ -33,25 +35,68 @@ func (b *lockedBuffer) String() string {
 	return b.Buffer.String()
 }
 
+// TestOutcomeConstantsMatchMonolith pins byte-identity with the monolith
+// resolver's vocabulary (go/internal/oidcbearer/telemetry.go): renaming a
+// constant must break this test, not just the E2E scrape.
+func TestOutcomeConstantsMatchMonolith(t *testing.T) {
+	t.Parallel()
+
+	for constant, literal := range map[string]string{
+		outcomeUnknownIssuer: "unknown_issuer",
+		outcomeWrongAudience: "wrong_audience",
+		outcomeExpired:       "expired",
+		outcomeBadSignature:  "bad_signature",
+		outcomeMalformed:     "malformed",
+	} {
+		if constant != literal {
+			t.Fatalf("outcome constant %q != monolith literal %q", constant, literal)
+		}
+	}
+}
+
+// TestVerifyOutcomeVocabulary pins every denial-outcome mapping against
+// literal strings, so a renamed constant breaks here and not in E2E.
 func TestVerifyOutcomeVocabulary(t *testing.T) {
 	t.Parallel()
 
 	key := testRSAKey(t)
 	srv := testIssuerServer(t, key, testKid)
-	v := testVerifier(t, srv)
-	full := func(claims map[string]any, header map[string]any) string {
-		rawHeader, err := json.Marshal(header)
+	live := time.Now()
+	mintClaims := func(mut func(jwt.MapClaims)) string {
+		claims := jwt.MapClaims{
+			"iss": srv.URL, "aud": testResource, "sub": "e2e-member",
+			"iat": live.Add(-time.Minute).Unix(), "exp": live.Add(time.Hour).Unix(),
+		}
+		mut(claims)
+		token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+		token.Header["kid"] = testKid
+		raw, err := token.SignedString(key)
+		if err != nil {
+			t.Fatalf("sign token: %v", err)
+		}
+		return "Bearer " + raw
+	}
+	down := testIssuerServer(t, testRSAKey(t), "down-key")
+	downIss := down.URL
+	down.Close()
+	// The down issuer stays trusted: classification passes it and the
+	// failure surfaces at crypto/fetch time, not as unknown_issuer.
+	v := NewTokenVerifier(testResource, []string{srv.URL, downIss}, "")
+	downHeader := mintToken(t, key, testKid, downIss, testResource, live.Add(time.Hour))
+	unsigned := func() string {
+		rawHeader, err := json.Marshal(map[string]any{"alg": "none"})
 		if err != nil {
 			t.Fatalf("marshal header: %v", err)
 		}
-		rawClaims, err := json.Marshal(claims)
+		rawClaims, err := json.Marshal(map[string]any{
+			"iss": srv.URL, "aud": testResource, "sub": "s", "exp": live.Add(time.Hour).Unix(),
+		})
 		if err != nil {
 			t.Fatalf("marshal claims: %v", err)
 		}
 		return "Bearer " + base64.RawURLEncoding.EncodeToString(rawHeader) + "." +
 			base64.RawURLEncoding.EncodeToString(rawClaims) + "."
 	}
-	live := time.Now().Add(time.Hour).Unix()
 	cases := []struct {
 		name    string
 		header  string
@@ -59,12 +104,15 @@ func TestVerifyOutcomeVocabulary(t *testing.T) {
 		iss     string
 		denial  DenialKind
 	}{
-		{"wrong audience", mintToken(t, key, testKid, srv.URL, "http://someone-else/", time.Now().Add(time.Hour)), outcomeWrongAudience, srv.URL, DenyPostMatch},
-		{"unknown issuer", mintToken(t, testRSAKey(t), "other", "http://unknown/", testResource, time.Now().Add(time.Hour)), outcomeUnknownIssuer, "http://unknown/", DenyUnrecognized},
-		{"malformed", "Bearer not.a.jwt", outcomeMalformed, "", DenyUnrecognized},
-		{"expired", mintToken(t, key, testKid, srv.URL, testResource, time.Now().Add(-time.Hour)), outcomeExpired, srv.URL, DenyPostMatch},
-		{"bad signature", mintToken(t, testRSAKey(t), testKid, srv.URL, testResource, time.Now().Add(time.Hour)), outcomeBadSignature, srv.URL, DenyPostMatch},
-		{"unsigned full claims", full(map[string]any{"iss": srv.URL, "aud": testResource, "sub": "s", "exp": live}, map[string]any{"alg": "none"}), outcomeBadSignature, srv.URL, DenyPostMatch},
+		{"wrong audience", mintToken(t, key, testKid, srv.URL, "http://someone-else/", live.Add(time.Hour)), "wrong_audience", srv.URL, DenyPostMatch},
+		{"unknown issuer", mintToken(t, testRSAKey(t), "other", "http://unknown/", testResource, live.Add(time.Hour)), "unknown_issuer", "http://unknown/", DenyUnrecognized},
+		{"malformed", "Bearer not.a.jwt", "malformed", "", DenyUnrecognized},
+		{"expired", mintToken(t, key, testKid, srv.URL, testResource, live.Add(-time.Hour)), "expired", srv.URL, DenyPostMatch},
+		{"future nbf", mintClaims(func(c jwt.MapClaims) { c["nbf"] = live.Add(time.Hour).Unix() }), "expired", srv.URL, DenyPostMatch},
+		{"empty sub", mintClaims(func(c jwt.MapClaims) { delete(c, "sub") }), "malformed", srv.URL, DenyPostMatch},
+		{"issuer down", downHeader, "bad_signature", downIss, DenyPostMatch},
+		{"bad signature", mintToken(t, testRSAKey(t), testKid, srv.URL, testResource, live.Add(time.Hour)), "bad_signature", srv.URL, DenyPostMatch},
+		{"unsigned full claims", unsigned(), "bad_signature", srv.URL, DenyPostMatch},
 	}
 	for _, tc := range cases {
 		result := v.Verify(tc.header)
