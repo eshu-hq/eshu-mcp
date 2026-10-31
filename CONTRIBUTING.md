@@ -50,11 +50,10 @@ the `shell`-only PR path cannot know about that edge on its own.
 
 ## Coverage floor
 
-The `go-ci / race` lane fails below the `coverage-floor` input on the
-`go-ci` call in `ci.yml`. The floor starts
-at the first measured baseline once Go code lands and may only rise toward
-the 90% target as tests land (issue #11). Never lower it, exclude packages
-silently, or delete assertions to move the number.
+The floor is 90, set via the `coverage-floor` input on the `go-ci`
+reusable call and enforced by the upstream `race`-lane comparison (closed
+issue #11; ratcheted from 80.3 by #24). It may only rise. Never lower it,
+exclude packages silently, or delete assertions to move the number.
 
 ## Fixture-only CI
 
