@@ -12,6 +12,11 @@ import (
 // emits the X.Y.Z image tag only for tags node-semver accepts, so a looser
 // gate makes verify-published demand a :ver tag that was never published.
 //
+// The three `+build` cases assert grammar acceptance only. metadata-action
+// strips build metadata and Docker tags cannot hold `+`, and the version-stamp
+// step in release.yml refuses `+` before verify-published ever runs, so such
+// a tag cannot publish; the fixtures model the gate in isolation.
+//
 // Each case is discriminating through the registry contents alone: a tag the
 // gate accepts must resolve as :<tag without v>; a tag it rejects must
 // resolve as :sha-<full> and say so with a ::notice::. The wrong branch finds
