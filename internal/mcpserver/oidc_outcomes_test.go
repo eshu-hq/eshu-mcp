@@ -155,7 +155,7 @@ func TestMiddlewareDenialLogShape(t *testing.T) {
 	for _, line := range strings.Split(buf.String(), "\n") {
 		line = strings.TrimSpace(line)
 		idx := strings.Index(line, "{")
-		if idx == -1 || !strings.Contains(line, "oidc Bearer [REDACTED]") {
+		if idx == -1 || !strings.Contains(line, "oidc bearer token denied") {
 			continue
 		}
 		var parsed struct {
@@ -171,7 +171,7 @@ func TestMiddlewareDenialLogShape(t *testing.T) {
 		if msg == "" {
 			msg = parsed.Msg
 		}
-		if msg != "oidc Bearer [REDACTED]" {
+		if msg != "oidc bearer token denied" {
 			t.Fatalf("message = %q", msg)
 		}
 		outcomes[parsed.Outcome] = parsed.Iss

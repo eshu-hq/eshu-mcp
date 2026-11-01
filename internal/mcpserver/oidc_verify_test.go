@@ -170,9 +170,18 @@ func TestVerifyMalformedUnrecognized(t *testing.T) {
 	srv := testIssuerServer(t, key, testKid)
 	v := testVerifier(t, srv)
 
-	for _, header := range []string{"Bearer not.a.jwt", "Bearer ", "Bearer " + strings.Repeat("x", 40)} {
-		if result := v.Verify(header); result.Denial != DenyUnrecognized {
+	// Only JWT-shaped-but-unparsable input denies as malformed here: an
+	// empty Bearer [REDACTED] a present scheme with no credential, and
+	// "aaaa.bbbb.cccc" (the E2E malformed probe's exact input). Opaque
+	// non-shaped credentials pass through (see
+	// TestVerifyOpaqueBearerPassesThrough).
+	for _, header := range []string{"Bearer ", "Bearer aaaa.bbbb.cccc", "Bearer x.y.z"} {
+		result := v.Verify(header)
+		if result.Denial != DenyUnrecognized {
 			t.Fatalf("%q: result.Denial = %v, want unrecognized", header, result.Denial)
+		}
+		if result.Outcome != outcomeMalformed {
+			t.Fatalf("%q: result.Outcome = %q, want %q", header, result.Outcome, outcomeMalformed)
 		}
 	}
 }
@@ -355,8 +364,14 @@ func TestVerifySchemeCaseInsensitive(t *testing.T) {
 	if result := v.Verify("BEARER " + strings.TrimPrefix(wrongAud, "Bearer ")); result.Denial != DenyPostMatch {
 		t.Fatalf("uppercase bearer wrong-audience: result.Denial = %v, want post-match", result.Denial)
 	}
-	if result := v.Verify("bearer garbage"); result.Denial != DenyUnrecognized {
-		t.Fatalf("lowercase bearer garbage: result.Denial = %v, want unrecognized", result.Denial)
+	// Dotted malformed input keeps the verification path whatever the
+	// scheme case; a dotless opaque credential forwards under a lowercase
+	// scheme exactly like its canonical-case twin.
+	if result := v.Verify("bearer aaaa.bbbb.cccc"); result.Denial != DenyUnrecognized {
+		t.Fatalf("lowercase bearer malformed JWT: result.Denial = %v, want unrecognized", result.Denial)
+	}
+	if result := v.Verify("bearer garbage"); result.Denial != DenyNone {
+		t.Fatalf("lowercase bearer opaque credential denied: %v", result.Denial)
 	}
 }
 

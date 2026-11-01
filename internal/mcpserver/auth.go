@@ -138,7 +138,7 @@ func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge str
 					// Outcome on every denial return. Method/path stay on
 					// the line: the E2E scraper reads named keys, and the
 					// operator keeps the request context.
-					logger.Warn("oidc Bearer [REDACTED]", "iss", iss, "outcome", outcome,
+					logger.Warn("oidc bearer token denied", "iss", iss, "outcome", outcome,
 						"method", r.Method, "path", r.URL.Path)
 				}
 				return

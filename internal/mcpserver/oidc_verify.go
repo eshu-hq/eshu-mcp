@@ -109,8 +109,11 @@ type VerifyResult struct {
 }
 
 // Verify checks one Authorization header value. A credential that is not
-// a Bearer token keeps the legacy pass-through: the edge cannot verify
-// what has no verifiable shape, and core still admits on dispatch.
+// a Bearer, and an opaque (dotless) Bearer [REDACTED] no claims to check, keeps the
+// legacy pass-through: the edge cannot verify what has no verifiable
+// shape, and core still admits on dispatch. Only a dotted Bearer - a
+// JWT attempt - is verified against the configured issuers (issuer,
+// audience, lifetime, signature).
 func (v *TokenVerifier) Verify(authHeader string) VerifyResult {
 	credential := strings.TrimSpace(authHeader)
 	// RFC 7235 schemes are case-insensitive: every Bearer-shaped
@@ -125,6 +128,17 @@ func (v *TokenVerifier) Verify(authHeader string) VerifyResult {
 	const prefix = "Bearer "
 	if v.sharedKey != "" && subtle.ConstantTimeCompare([]byte(prefix+raw), []byte(prefix+v.sharedKey)) == 1 {
 		return VerifyResult{Principal: "shared"}
+	}
+	// A Bearer [REDACTED] that never had the compact JWT shape carries no
+	// claims to verify: opaque personal and scoped tokens keep the legacy
+	// pass-through and core admits on dispatch. This mirrors core's
+	// isJWTShaped gate (go/internal/oidcbearer/resolver.go), which falls
+	// through to the next resolver for the same input. An empty Bearer
+	// (present scheme, absent credential) stays malformed: it is broken,
+	// not opaque.
+	if raw != "" && isOpaqueCredential(raw) {
+		sum := sha256.Sum256([]byte(credential))
+		return VerifyResult{Principal: "fwd:" + hex.EncodeToString(sum[:])}
 	}
 	kind, outcome, iss := classifyToken(raw, v.resource, v.issuers)
 	if kind != DenyNone {
@@ -163,6 +177,20 @@ func claimString(claims jwt.MapClaims, key string) string {
 		return ""
 	}
 	return value
+}
+
+// isOpaqueCredential reports whether raw can never be a compact JWT:
+// Eshu-issued personal and scoped tokens are opaque hex/base64 strings
+// with no dots (see core go/internal/oidcbearer/claims.go), so a dotless
+// Bearer [REDACTED] no claims to verify and keeps the legacy pass-through to
+// core, where core remains the admission authority. Any dotted input is a
+// JWT attempt and stays on the verification path: core's strict shape
+// gate would fall an unsigned trailing-dot token through to a later
+// resolver, but the edge refuses it at the door instead (bad_signature or
+// malformed), which the outcome table pins and the E2E leakage matrix
+// relies on.
+func isOpaqueCredential(raw string) bool {
+	return !strings.Contains(raw, ".")
 }
 
 // classifyToken reads the unverified claims only to choose the denial
