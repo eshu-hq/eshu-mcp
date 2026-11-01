@@ -73,6 +73,45 @@ The edge door check classifies credentials by shape and does not admit them.
   keys as core's `deny()` line, plus `method` and `path`. The E2E scraper
   matches on the message and `outcome`.
 
+### Admission latency (eshu-hq/eshu-mcp#50)
+
+`go test ./internal/mcpserver -run '^$' -bench AdmissionRequest -benchtime=200x -count=3`
+drives `ping` behind the production admission middleware against a fake core
+whose probe takes a fixed 5ms (arm64 Linux, 16 cores):
+
+| Path | Per request | Core probes per request |
+| --- | --- | --- |
+| Cache hit (inside the 30s admit TTL) | about 6.4 microseconds | 0 |
+| No cache (every request probes) | about 5.24 ms | 1 |
+
+The uncached cost is the core round trip plus about 0.24 ms of edge overhead,
+so the cache removes the probe from every request after the first inside the
+TTL. The ratio scales with real core latency; rerun the benchmark with
+`admissionProbeDelay` set to a measured value to size it for a deployment.
+
+## SSE session bound (eshu-hq/eshu-mcp#50)
+
+`GET /sse` mints a session, a buffered channel, and a handler goroutine that
+live until the client disconnects. Each principal may hold at most
+`32` concurrent sessions (`ESHU_MCP_MAX_SSE_SESSIONS_PER_PRINCIPAL` overrides
+it; a malformed or non-positive value fails the boot).
+
+- The key is the principal the session already binds to for the
+  `POST /mcp/message` mismatch check: an opaque credential hash, or `shared`
+  for the deployment key. The shared key is one principal, so every caller
+  behind it shares one allowance; raise the cap for a team on a shared key.
+- With transport auth off (the loopback escape hatch) every session has an
+  empty principal and shares one anonymous allowance, so that mode is bounded
+  too.
+- A request over the cap gets `429` with `Retry-After: 5` and a JSON-RPC
+  error, code `-32002`, before any stream header is written. The slot is
+  taken in the same critical section that inserts the session and returned
+  when the connection closes, so concurrent mints cannot pass the cap and a
+  reconnecting client frees its own stale slot.
+- `/healthz` reports `sse.active` (live sessions) and `sse.rejected`
+  (refusals since start). The refusal log line carries `outcome`
+  `sse_session_cap_reached` and the cap, never the principal.
+
 ## NOT_CHECKED
 
 Live MCP calls against deployed artifacts, QA EKS proof, concurrent

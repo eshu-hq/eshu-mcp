@@ -149,14 +149,16 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	}
 	sess := &sseSession{ch: make(chan []byte, 64), principal: principalKey(r.Context()), surface: surface, shape: shape}
 
-	s.sessMu.Lock()
-	s.sessions[sessionID] = sess
-	s.sessMu.Unlock()
+	// Insert the session and take the principal's slot in one critical section
+	// (sse_limit.go): a principal at its cap is refused before any stream
+	// header is written, so the client gets a plain 429, not a dead stream.
+	if !s.registerSession(sessionID, sess) {
+		s.refuseSessionOverLimit(w)
+		return
+	}
 
 	defer func() {
-		s.sessMu.Lock()
-		delete(s.sessions, sessionID)
-		s.sessMu.Unlock()
+		s.unregisterSession(sessionID)
 		sess.shutdown()
 	}()
 
