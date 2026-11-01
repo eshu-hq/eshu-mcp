@@ -122,10 +122,14 @@ Confirmed by those runs:
 - `docker buildx imagetools inspect --raw` hashes to the `Digest:` line
   against GHCR, so the `verify-published` digest comparison works.
 
-Still open: the auto path (tag plus dispatch) has one live run,
-`v0.2.7`. A second one is expected on the next `release:patch` merge
-(the change that added this section carries that label); treat that
-run as the confirmation that `v0.2.7` was not a one-off.
+Repeat run, `v0.2.9`: merging #55 (label `release:patch`, merge commit
+`4c47d698`) ran auto-tag run 41288733120, which pushed the annotated tag
+and dispatched release run 41288741739 (`headBranch` `v0.2.9`, `headSha`
+`4c47d698`). `build-and-scan`, `push`, `github-release` and
+`verify-published` all passed, and `:0.2.9`, `:0.2` and `:0` resolve to
+`sha256:a3fbe4ee0cbd0bbab7b78aa1f3335c314283937e73d01361d5744ba8bde11bcf`,
+the digest in the Release body. The auto path has two live runs, so
+`v0.2.7` was not a one-off.
 
 Watch the `release` run on the tag: `build-and-scan`, then `push`,
 then `github-release`. The release body records the pushed digest;
