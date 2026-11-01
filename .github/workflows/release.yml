@@ -33,7 +33,7 @@
 # `github-release` (tag runs only) cuts the Release. A failed scan
 # leaves nothing pullable in GHCR because no tag is ever pushed before
 # the scan passes, on main or on a version tag. On tag runs a final
-# `verify-published` job re-checks that `:vX.Y.Z` and `:X.Y.Z` resolve to
+# `verify-published` job re-checks that `:X.Y.Z` resolves to
 # the pushed digest and that the Release records it, so a green tag run
 # always means a pullable image and a Release.
 #
@@ -200,7 +200,6 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=${{ github.ref_name }}
             type=sha,prefix=sha-,format=long
       - name: Extract metadata (main-branch pushes)
         id: meta-branch
@@ -338,22 +337,20 @@ jobs:
         run: |
           set -euo pipefail
           # Last line of defense: a tag run that goes green must leave a
-          # pullable vX.Y.Z image at the pushed digest and a Release that
+          # pullable X.Y.Z image at the pushed digest and a Release that
           # records it. Anything else fails here, loudly.
           ver="${TAG#v}"
           major="${ver%%.*}"
           rest="${ver#*.}"
           minor="${rest%%.*}"
-          # vX.Y.Z and X.Y.Z are immutable per release: they must equal the
-          # pushed digest. X.Y and X move with later patches: they must only
+          # X.Y.Z (the v is stripped by metadata-action's semver pattern) is
+          # immutable per release: it must equal the pushed digest. X.Y and X move with later patches: they must only
           # resolve.
-          for t in "$TAG" "$ver"; do
-            got="sha256:$(docker buildx imagetools inspect --raw "${IMAGE}:${t}" | sha256sum | cut -d' ' -f1)"
-            if [ "$got" != "$DIGEST" ]; then
-              echo "::error::${IMAGE}:${t} is ${got}, want ${DIGEST}" >&2
-              exit 1
-            fi
-          done
+          got="sha256:$(docker buildx imagetools inspect --raw "${IMAGE}:${ver}" | sha256sum | cut -d' ' -f1)"
+          if [ "$got" != "$DIGEST" ]; then
+            echo "::error::${IMAGE}:${ver} is ${got}, want ${DIGEST}" >&2
+            exit 1
+          fi
           for t in "${major}.${minor}" "$major"; do
             docker buildx imagetools inspect --raw "${IMAGE}:${t}" >/dev/null
           done

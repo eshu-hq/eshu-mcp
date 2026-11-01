@@ -51,7 +51,7 @@ never replay a published one or move the floating `X.Y` and `X` tags
 backward.
 
 Every tag run (push or dispatch) ends with `verify-published`, which
-fails the run unless `:vX.Y.Z` and `:X.Y.Z` resolve to the pushed digest
+fails the run unless `:X.Y.Z` (the `v` is dropped from image tags) resolves to the pushed digest
 and the Release records it. `auto-tag` fails if the dispatch errors or
 no release run appears within about a minute, so a bare tag is never a
 silent outcome.

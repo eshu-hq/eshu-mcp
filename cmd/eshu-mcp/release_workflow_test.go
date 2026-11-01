@@ -305,12 +305,17 @@ func TestReleaseTagRoutesPublishImageAndRelease(t *testing.T) {
 		"type=semver,pattern={{version}}",
 		"type=semver,pattern={{major}}.{{minor}}",
 		"type=semver,pattern={{major}}",
-		"type=raw,value=${{ github.ref_name }}",
 		"imagetools inspect --raw",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("release.yml has no %q: a tag run would miss a published tag or its verification", want)
 		}
+	}
+	// The published tag set is unchanged (docker/metadata-action drops the
+	// v from semver patterns): downstream pins sha-<full>@sha256, so no
+	// extra vX.Y.Z image tag is added.
+	if strings.Contains(body, "type=raw,value=${{ github.ref_name }}") {
+		t.Error("release.yml publishes a raw vX.Y.Z image tag: the tag set must stay unchanged")
 	}
 }
 
