@@ -44,7 +44,17 @@ gh workflow run release.yml --repo eshu-hq/eshu-mcp --ref vX.Y.Z
 
 A dispatch runs the workflow file as it exists at that ref, so this
 works only for tags cut after the dispatch handling landed; an older tag
-needs a new patch tag instead.
+needs a new patch tag instead. The dispatch is refused (fails closed,
+before the scan and push) when the tag already has a Release or its
+commit is not on `main`, so recovery can complete a missing release but
+never replay a published one or move the floating `X.Y` and `X` tags
+backward.
+
+Every tag run (push or dispatch) ends with `verify-published`, which
+fails the run unless `:vX.Y.Z` and `:X.Y.Z` resolve to the pushed digest
+and the Release records it. `auto-tag` fails if the dispatch errors or
+no release run appears within about a minute, so a bare tag is never a
+silent outcome.
 
 Watch the `release` run on the tag: `build-and-scan`, then `push`,
 then `github-release`. The release body records the pushed digest;

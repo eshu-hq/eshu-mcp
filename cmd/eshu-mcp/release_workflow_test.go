@@ -49,6 +49,14 @@ func ifAfter(t *testing.T, body, anchor string) string {
 // so the guards test behavior per event rather than pinning spelling.
 func evalCondition(t *testing.T, expr string, ctx map[string]string) bool {
 	t.Helper()
+	v := evalExprValue(t, expr, ctx)
+	return v != "" && v != "false"
+}
+
+// evalExprValue returns the string value of expr (GitHub && / || return
+// an operand, which is how the VERSION stamp picks the tag name).
+func evalExprValue(t *testing.T, expr string, ctx map[string]string) string {
+	t.Helper()
 	var toks []string
 	for i := 0; i < len(expr); {
 		switch c := expr[i]; {
@@ -140,14 +148,17 @@ func evalCondition(t *testing.T, expr string, ctx map[string]string) bool {
 	if pos != len(toks) {
 		t.Fatalf("trailing tokens in %q", expr)
 	}
-	return truthy(got)
+	return got
 }
 
 func refCtx(event, refType, ref string) map[string]string {
+	name := strings.TrimPrefix(strings.TrimPrefix(ref, "refs/tags/"), "refs/heads/")
 	return map[string]string{
 		"github.event_name": event,
 		"github.ref_type":   refType,
 		"github.ref":        ref,
+		"github.ref_name":   name,
+		"github.sha":        "0123456789abcdef0123456789abcdef01234567",
 	}
 }
 
@@ -248,5 +259,167 @@ func TestAutoTagDispatchesReleaseForNewTag(t *testing.T) {
 	}
 	if !strings.Contains(cond, "steps.tag.outputs.tag != ''") {
 		t.Errorf("dispatch step condition %q does not require a freshly pushed tag", cond)
+	}
+}
+
+// tagRoutes are the two ways a new vX.Y.Z tag reaches release.yml: a human
+// pushes the tag, or auto-tag dispatches the workflow on the tag ref. Both
+// must publish the same image and cut the same Release.
+var tagRoutes = []struct {
+	name, event string
+}{
+	{"human tag push", "push"},
+	{"auto-tag dispatch on tag ref", "workflow_dispatch"},
+}
+
+// TestReleaseTagRoutesPublishImageAndRelease pins that each route runs the
+// Trivy step, the push job, the semver-tag metadata, the Release cut, and
+// the post-publish verification, and stamps the tag into the binary.
+func TestReleaseTagRoutesPublishImageAndRelease(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, "release.yml")
+	steps := map[string]string{
+		"Trivy step":         "name: Scan local image for HIGH/CRITICAL CVEs",
+		"semver tag meta":    "id: meta-tag",
+		"push job":           "needs: [build-and-scan]",
+		"github-release job": "needs: [push]",
+		"verify-published":   "needs: [push, github-release]",
+	}
+	for _, route := range tagRoutes {
+		ctx := refCtx(route.event, "tag", "refs/tags/v0.2.6")
+		for what, anchor := range steps {
+			if !evalCondition(t, ifAfter(t, body, anchor), ctx) {
+				t.Errorf("%s: %s does not run", route.name, what)
+			}
+		}
+		if evalCondition(t, ifAfter(t, body, "id: meta-branch"), ctx) {
+			t.Errorf("%s: main-branch metadata (moving latest) runs on a tag", route.name)
+		}
+		stamp := evalExprValue(t, "github.ref_type == 'tag' && github.ref_name || github.sha", ctx)
+		if stamp != "v0.2.6" {
+			t.Errorf("%s: version stamp = %q, want v0.2.6", route.name, stamp)
+		}
+	}
+	for _, want := range []string{
+		"type=semver,pattern={{version}}",
+		"type=semver,pattern={{major}}.{{minor}}",
+		"type=semver,pattern={{major}}",
+		"type=raw,value=${{ github.ref_name }}",
+		"imagetools inspect --raw",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("release.yml has no %q: a tag run would miss a published tag or its verification", want)
+		}
+	}
+}
+
+// TestReleasePushUnreachableWithoutTrivyGate pins the gate for every route:
+// the only job that pushes needs build-and-scan, nothing can skip the scan
+// yet still push, and no failure is swallowed.
+func TestReleasePushUnreachableWithoutTrivyGate(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, "release.yml")
+	pushIf := ifAfter(t, body, "needs: [build-and-scan]")
+	if trivyIf := ifAfter(t, body, "name: Scan local image for HIGH/CRITICAL CVEs"); trivyIf != pushIf {
+		t.Errorf("Trivy runs when %q but push runs when %q: a route could push unscanned", trivyIf, pushIf)
+	}
+	// The SARIF upload in build-and-scan legitimately uses failure(); only
+	// the jobs downstream of the gate must not.
+	downstream := body[strings.Index(body, "\n  push:\n    needs"):]
+	for _, bad := range []string{"always()", "failure()", "cancelled()"} {
+		if strings.Contains(downstream, bad) {
+			t.Errorf("a job after the scan gate uses %q: push could run after a failed or skipped scan", bad)
+		}
+	}
+	if strings.Contains(body, "continue-on-error") {
+		t.Error("release.yml uses continue-on-error: a failed scan could be swallowed")
+	}
+	if !strings.Contains(body, `exit-code: "1"`) {
+		t.Error("Trivy no longer exits non-zero on findings")
+	}
+	if got := strings.Count(body, "push: true"); got != 1 {
+		t.Errorf("%d registry-push build steps, want exactly 1 (in the scan-gated push job)", got)
+	}
+	jobs := body[strings.Index(body, "\njobs:"):]
+	scanJob := jobs[strings.Index(jobs, "  build-and-scan:"):strings.Index(jobs, "  push:")]
+	if strings.Contains(strings.SplitN(scanJob, "steps:", 2)[0], "if:") {
+		t.Error("build-and-scan has a job-level if: a skipped scan job would skip push, not gate it")
+	}
+	pushJob := jobs[strings.Index(jobs, "  push:"):strings.Index(jobs, "  github-release:")]
+	if !strings.Contains(pushJob, "push: true") {
+		t.Error("the registry push moved out of the push job that needs build-and-scan")
+	}
+}
+
+// TestAutoTagFailsLoudWhenReleaseRunMissing pins that a tag with no release
+// run turns the auto-tag job red instead of staying a bare tag.
+func TestAutoTagFailsLoudWhenReleaseRunMissing(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, "auto-tag.yml")
+	for _, want := range []string{
+		"--event workflow_dispatch",
+		"::error::",
+		"exit 1",
+		"set -euo pipefail",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("auto-tag.yml has no %q: a missing release run could pass silently", want)
+		}
+	}
+	if strings.Contains(body, "|| true") && strings.Contains(body[strings.Index(body, "Dispatch release"):], "|| true") {
+		t.Error("dispatch step swallows a failure with || true")
+	}
+	if strings.Contains(body, "continue-on-error") {
+		t.Error("auto-tag.yml uses continue-on-error: a failed dispatch would not fail the job")
+	}
+}
+
+// TestReleaseTagDispatchRefusesReplayAndOffMain pins the replay guard: a
+// dispatch on a tag must not republish a tag that already has a Release
+// (which would also move the floating X.Y and X tags backward) or a tag
+// whose commit is not on main. The guard runs inside build-and-scan, before
+// the Trivy step and the push job, and only for tag dispatches so the human
+// tag-push route is unchanged.
+func TestReleaseTagDispatchRefusesReplayAndOffMain(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, "release.yml")
+	const anchor = "name: Refuse replayed or off-main tag dispatch"
+	gate := strings.Index(body, anchor)
+	if gate < 0 {
+		t.Fatalf("no %q step: a tag dispatch could republish an old tag", anchor)
+	}
+	if trivy := strings.Index(body, "name: Scan local image for HIGH/CRITICAL CVEs"); gate > trivy {
+		t.Error("replay guard runs after the Trivy step: it must gate the whole publish path")
+	}
+	cond := ifAfter(t, body, anchor)
+	for _, tc := range []struct {
+		name                string
+		event, refType, ref string
+		want                bool
+	}{
+		{"tag dispatch", "workflow_dispatch", "tag", "refs/tags/v0.2.6", true},
+		{"tag push", "push", "tag", "refs/tags/v0.2.6", false},
+		{"main push", "push", "branch", "refs/heads/main", false},
+		{"branch dispatch", "workflow_dispatch", "branch", "refs/heads/x", false},
+	} {
+		if got := evalCondition(t, cond, refCtx(tc.event, tc.refType, tc.ref)); got != tc.want {
+			t.Errorf("%s: replay guard runs=%v, want %v", tc.name, got, tc.want)
+		}
+	}
+	section := body[gate : gate+strings.Index(body[gate:], "- uses: docker/setup-buildx-action")]
+	for _, want := range []string{
+		`gh release view "$TAG"`,
+		"release not found",
+		"git merge-base --is-ancestor",
+		"origin/main",
+		"exit 1",
+	} {
+		if !strings.Contains(section, want) {
+			t.Errorf("replay guard lacks %q: it must fail closed on an existing Release, an API error, or an off-main tag", want)
+		}
 	}
 }

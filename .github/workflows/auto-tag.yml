@@ -29,7 +29,9 @@
 #   never a silent skip.
 # - The dispatch step runs only after a real tag push (never on the dry
 #   run) and skips when a release run for that tag already exists, so a
-#   tag push that did start its own run cannot be published twice.
+#   tag push that did start its own run cannot be published twice. A
+#   failed dispatch, or a dispatch whose run never appears, fails the job
+#   (red run plus an error annotation) instead of leaving a bare tag.
 # - Recovery: if the tag exists but its release run is missing (dispatch
 #   failed, or a re-run hit the "already tagged" no-op), start it by hand:
 #     gh workflow run release.yml --ref vX.Y.Z
@@ -133,5 +135,22 @@ jobs:
             echo "release run already exists for ${NEXT_TAG}; not dispatching"
             exit 0
           fi
+          started="$(date -u -d '-60 seconds' '+%Y-%m-%dT%H:%M:%SZ')"
           gh workflow run release.yml --ref "$NEXT_TAG"
           echo "dispatched release.yml on ${NEXT_TAG}"
+          # A tag with no release run is the silent failure this workflow
+          # exists to prevent, so fail loudly unless the run shows up. Match
+          # on event and commit, not the branch filter: the merge commit
+          # also has a release run from the push to main.
+          sha="$(git rev-parse "${NEXT_TAG}^{commit}")"
+          for _ in $(seq 1 12); do
+            seen="$(gh run list --workflow release.yml --event workflow_dispatch --limit 20 --json headSha,createdAt \
+              --jq "[.[] | select(.headSha == \"${sha}\" and .createdAt >= \"${started}\")] | length")"
+            if [ "$seen" != "0" ]; then
+              echo "release run for ${NEXT_TAG} is queued or running"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::${NEXT_TAG} is tagged but no release run appeared; start it with: gh workflow run release.yml --ref ${NEXT_TAG}"
+          exit 1

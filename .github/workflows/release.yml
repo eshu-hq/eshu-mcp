@@ -18,7 +18,10 @@
 # same command is the manual recovery for a tag that has no release run:
 #   gh workflow run release.yml --ref vX.Y.Z
 # A dispatch runs the workflow file as it exists at the given ref, so a
-# tag cut before this handling landed cannot be released this way.
+# tag cut before this handling landed cannot be released this way. A tag
+# dispatch is also refused when the tag already has a Release or its
+# commit is not on main, so it can only complete a missing release, never
+# replay one or move the floating tags back.
 # A manual dispatch on a branch builds the local image without scanning
 # or pushing, to prove the workflow itself works. Conditions key off
 # `github.ref_type == 'tag'`, never the event name alone, so a branch
@@ -29,7 +32,10 @@
 # gate passes and publishes the multi-arch image with attestations, and
 # `github-release` (tag runs only) cuts the Release. A failed scan
 # leaves nothing pullable in GHCR because no tag is ever pushed before
-# the scan passes, on main or on a version tag.
+# the scan passes, on main or on a version tag. On tag runs a final
+# `verify-published` job re-checks that `:vX.Y.Z` and `:X.Y.Z` resolve to
+# the pushed digest and that the Release records it, so a green tag run
+# always means a pullable image and a Release.
 #
 # The Dockerfile VERSION arg stamps the tag into the binary with
 # `-ldflags "-X main.version=..."`, so the initialize handshake reports the
@@ -83,6 +89,35 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Refuse replayed or off-main tag dispatch
+        # A dispatch on a tag is the auto-tag hand-off and the manual
+        # recovery path. It must not re-publish a tag that already has a
+        # Release (that would also move the floating X.Y and X tags back
+        # to an older build) or a tag whose commit is not on main. The
+        # human tag-push route is unchanged.
+        if: github.event_name == 'workflow_dispatch' && github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          rc=0
+          out="$(gh release view "$TAG" --json url --jq .url 2>&1)" || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::Release ${TAG} already exists (${out}); refusing to republish it by dispatch" >&2
+            exit 1
+          fi
+          # Fail closed: only a clean "not found" means the tag is unreleased.
+          case "$out" in
+            *"release not found"*) ;;
+            *) echo "::error::cannot tell whether ${TAG} is released: ${out}" >&2; exit 1 ;;
+          esac
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::${TAG} (${GITHUB_SHA}) is not on main; refusing to publish it by dispatch" >&2
+            exit 1
+          fi
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Validate version stamp
         env:
@@ -165,6 +200,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=raw,value=${{ github.ref_name }}
             type=sha,prefix=sha-,format=long
       - name: Extract metadata (main-branch pushes)
         id: meta-branch
@@ -276,3 +312,54 @@ jobs:
             Image: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.push.outputs.digest }}`
             Provenance and SBOM attestations are attached to the image in GHCR.
             Scan: Trivy HIGH/CRITICAL gate passed on this digest before push.
+
+  verify-published:
+    needs: [push, github-release]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Log in to Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the tag's image and Release exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          DIGEST: ${{ needs.push.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          # Last line of defense: a tag run that goes green must leave a
+          # pullable vX.Y.Z image at the pushed digest and a Release that
+          # records it. Anything else fails here, loudly.
+          ver="${TAG#v}"
+          major="${ver%%.*}"
+          rest="${ver#*.}"
+          minor="${rest%%.*}"
+          # vX.Y.Z and X.Y.Z are immutable per release: they must equal the
+          # pushed digest. X.Y and X move with later patches: they must only
+          # resolve.
+          for t in "$TAG" "$ver"; do
+            got="sha256:$(docker buildx imagetools inspect --raw "${IMAGE}:${t}" | sha256sum | cut -d' ' -f1)"
+            if [ "$got" != "$DIGEST" ]; then
+              echo "::error::${IMAGE}:${t} is ${got}, want ${DIGEST}" >&2
+              exit 1
+            fi
+          done
+          for t in "${major}.${minor}" "$major"; do
+            docker buildx imagetools inspect --raw "${IMAGE}:${t}" >/dev/null
+          done
+          body="$(gh release view "$TAG" --json body --jq .body)"
+          case "$body" in
+            *"$DIGEST"*) ;;
+            *) echo "::error::Release ${TAG} does not record ${DIGEST}" >&2; exit 1 ;;
+          esac
+          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx 'eshu-mcp-image-spdx.json'
