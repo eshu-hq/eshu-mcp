@@ -131,12 +131,12 @@ func (v *TokenVerifier) Verify(authHeader string) VerifyResult {
 	// whatever its case. Only a dotted Bearer (a JWT attempt) is verified
 	// below; a genuinely different scheme, and likewise a dotless Bearer,
 	// keeps the legacy pass-through to core.
-	scheme, rest, _ := strings.Cut(credential, " ")
+	// splitCredential cuts and trims the way core does, so "Bearer\t x" is the
+	// same Bearer here as there.
+	scheme, raw, _ := splitCredential(credential)
 	if !strings.EqualFold(scheme, "Bearer") {
-		sum := sha256.Sum256([]byte(credential))
-		return VerifyResult{Principal: "fwd:" + hex.EncodeToString(sum[:])}
+		return VerifyResult{Principal: forwardedPrincipal(credential)}
 	}
-	raw := strings.TrimSpace(rest)
 	const prefix = "Bearer "
 	if v.sharedKey != "" && subtle.ConstantTimeCompare([]byte(prefix+raw), []byte(prefix+v.sharedKey)) == 1 {
 		return VerifyResult{Principal: "shared"}
@@ -149,8 +149,7 @@ func (v *TokenVerifier) Verify(authHeader string) VerifyResult {
 	// (present scheme, absent credential) stays malformed: it is broken,
 	// not opaque.
 	if raw != "" && isOpaqueCredential(raw) {
-		sum := sha256.Sum256([]byte(credential))
-		return VerifyResult{Principal: "fwd:" + hex.EncodeToString(sum[:])}
+		return VerifyResult{Principal: forwardedPrincipal(credential)}
 	}
 	kind, outcome, iss := classifyToken(raw, v.resource, v.issuers)
 	if kind != DenyNone {

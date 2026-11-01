@@ -44,7 +44,7 @@ func (f *fakeProber) callCount() int {
 // admissionServer builds the real MCP server behind the admission
 // middleware so a test exercises every locally served method through the
 // production wiring, not a stub handler.
-func admissionServer(t *testing.T, sharedKey string, verifier *TokenVerifier, admission *Admission) http.Handler {
+func admissionServer(t testing.TB, sharedKey string, verifier *TokenVerifier, admission *Admission) http.Handler {
 	t.Helper()
 
 	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))

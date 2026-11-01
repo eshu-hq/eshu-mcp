@@ -20,8 +20,6 @@ package mcpserver
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -63,11 +61,10 @@ func edgeAuth(sharedKey, authHeader string) (string, bool) {
 	if credential == "" {
 		return "", false
 	}
-	if sharedKey != "" && subtle.ConstantTimeCompare([]byte(credential), []byte("Bearer "+sharedKey)) == 1 {
+	if matchesSharedKey(sharedKey, credential) {
 		return "shared", true
 	}
-	sum := sha256.Sum256([]byte(credential))
-	return "fwd:" + hex.EncodeToString(sum[:]), true
+	return forwardedPrincipal(credential), true
 }
 
 // EdgeAuthMiddleware enforces the edge credential check on the MCP HTTP

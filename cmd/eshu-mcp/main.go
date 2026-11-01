@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	eshuregistry "github.com/eshu-hq/eshu-mcp"
@@ -80,6 +81,10 @@ func wireServer(args []string, getenv func(string) string, logOut *slog.Logger) 
 		return "", nil, nil, fmt.Errorf("eshu-mcp: invalid ESHU_MCP_RESULT_SHAPE: %w", err)
 	}
 	profile := strings.TrimSpace(getenv("ESHU_MCP_QUERY_PROFILE"))
+	sseOpts, err := sseSessionOptions(getenv)
+	if err != nil {
+		return "", nil, nil, err
+	}
 
 	// No silent open mode over HTTP: refuse to start with no credential
 	// posture unless the operator explicitly opts into the loopback escape
@@ -111,7 +116,7 @@ func wireServer(args []string, getenv func(string) string, logOut *slog.Logger) 
 			"resource", discovery.Resource,
 			"metadata_url", discovery.MetadataURL)
 	}
-	server, extra, summary := buildServer(logOut, client, *coreBaseURL, apiKey, discovery, credentialConfigured, surface, shape, profile)
+	server, extra, summary := buildServer(logOut, client, *coreBaseURL, apiKey, discovery, credentialConfigured, surface, shape, profile, sseOpts...)
 	logOut.Info("eshu-mcp serving",
 		"contract", eshuregistry.ContractVersion(),
 		"tools", summary.advertised,
@@ -121,6 +126,41 @@ func wireServer(args []string, getenv func(string) string, logOut *slog.Logger) 
 		"addr", *addr,
 	)
 	return *addr, server, extra, nil
+}
+
+const (
+	// maxSSESessionsEnv names the per-principal SSE session cap. Unset keeps
+	// the library default. The shared deployment key is one principal, so a
+	// team behind it raises this.
+	maxSSESessionsEnv = "ESHU_MCP_MAX_SSE_SESSIONS_PER_PRINCIPAL"
+	// maxSSESessionsTotalEnv names the process-wide SSE session ceiling, the
+	// backstop above the per-principal cap. Unset keeps the library default.
+	maxSSESessionsTotalEnv = "ESHU_MCP_MAX_SSE_SESSIONS_TOTAL"
+)
+
+// sseSessionOptions turns the optional cap envs into server options. A set but
+// malformed or non-positive value fails the boot: silently falling back would
+// hide an operator typo that they set precisely to change the bound.
+func sseSessionOptions(getenv func(string) string) ([]mcpserver.ServerOption, error) {
+	var opts []mcpserver.ServerOption
+	for _, knob := range []struct {
+		env   string
+		build func(int) mcpserver.ServerOption
+	}{
+		{maxSSESessionsEnv, mcpserver.WithMaxSSESessionsPerPrincipal},
+		{maxSSESessionsTotalEnv, mcpserver.WithMaxSSESessions},
+	} {
+		raw := strings.TrimSpace(getenv(knob.env))
+		if raw == "" {
+			continue
+		}
+		limit, err := strconv.Atoi(raw)
+		if err != nil || limit < 1 {
+			return nil, fmt.Errorf("eshu-mcp: invalid %s=%q (want a positive integer)", knob.env, raw)
+		}
+		opts = append(opts, knob.build(limit))
+	}
+	return opts, nil
 }
 
 // serverSummary is the startup advertisement the operator confirms.
@@ -138,7 +178,7 @@ type serverSummary struct {
 // starts. authEnforced mirrors the monolith: transport auth is wired
 // whenever any credential knob is set, so a headerless request is denied;
 // only the escape-hatch-open deployment with no source serves open.
-func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, apiKey string, discovery mcpserver.DiscoveryConfig, authEnforced bool, surface router.Surface, shape resultshape.Mode, profile string) (*mcpserver.Server, *http.ServeMux, serverSummary) {
+func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, apiKey string, discovery mcpserver.DiscoveryConfig, authEnforced bool, surface router.Surface, shape resultshape.Mode, profile string, extraOpts ...mcpserver.ServerOption) (*mcpserver.Server, *http.ServeMux, serverSummary) {
 	tools := eshuregistry.Definitions()
 	if mcpserver.IsProductionProfile(profile) {
 		hidden := eshuregistry.ProductionHidden()
@@ -191,6 +231,7 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 		opts = append(opts, mcpserver.WithTransportAuth(
 			mcpserver.EdgeAuthMiddlewareWithAdmission(apiKey, discovery, verifier, admission, logOut)))
 	}
+	opts = append(opts, extraOpts...)
 	// The escape-hatch caller passes apiKey "" with transport auth off: every
 	// dispatch still forwards the caller credential to core for admission.
 	server := mcpserver.NewServer(tools, dispatchFunc, logOut, "eshu-mcp", version, opts...)
@@ -205,6 +246,11 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 			"contract": eshuregistry.ContractVersion(),
 			"tools":    advertised,
 			"core":     coreBaseURL,
+		}
+		sse := server.SSEStats()
+		health["sse"] = map[string]int64{
+			"active":   int64(sse.Active),
+			"rejected": sse.Rejected,
 		}
 		if admission != nil {
 			stats := admission.Stats()

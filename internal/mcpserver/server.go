@@ -43,6 +43,11 @@ type Server struct {
 
 	sessMu   sync.RWMutex
 	sessions map[string]*sseSession
+	// sseLimit counts live sessions per principal under sessMu; see
+	// sse_limit.go. sseMaxPerPrincipal is the configured cap (0 = default).
+	sseLimit           sseLimiter
+	sseMaxPerPrincipal int
+	sseMaxTotal        int
 
 	// transportAuth wraps GET /sse and POST /mcp/message with the edge
 	// credential check. Nil leaves the transport unauthenticated, which the
