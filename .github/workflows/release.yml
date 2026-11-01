@@ -14,9 +14,9 @@
 # GITHUB_TOKEN, and GitHub does not start workflow runs from events that
 # token causes, except workflow_dispatch and repository_dispatch (GitHub
 # docs, "Triggering a workflow from a workflow"). auto-tag therefore runs
-# `gh workflow run release.yml --ref vX.Y.Z` after pushing the tag. The
+# `gh workflow run release.yml --ref refs/tags/vX.Y.Z` after pushing the tag. The
 # same command is the manual recovery for a tag that has no release run:
-#   gh workflow run release.yml --ref vX.Y.Z
+#   gh workflow run release.yml --ref refs/tags/vX.Y.Z
 # A dispatch runs the workflow file as it exists at the given ref, so a
 # tag cut before this handling landed cannot be released this way. A tag
 # dispatch is also refused when the tag already has a Release, its

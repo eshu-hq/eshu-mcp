@@ -92,16 +92,26 @@ resolves to the pushed digest, the moving `X.Y` and `X` tags resolve
 SBOM. `auto-tag` fails if the dispatch errors or no release run appears
 within about a minute, so a bare tag is never a silent outcome.
 
-The first live run must confirm what the local tests stub:
+The local tests stub the GitHub and registry behavior. Two points were
+checked live before the first auto-released tag, on a lightweight tag
+and a real image:
 
-- the dispatch API accepts `ref=refs/tags/...`;
-- a dispatched run on an annotated tag reports the tag commit as
-  `headSha` (the `auto-tag` poll matches on it) and the tag name as
-  `head_branch` (the duplicate-run check uses `--branch`);
+- `gh workflow run release.yml --ref refs/tags/v0.2.5` was accepted and
+  created a `workflow_dispatch` run with `head_branch` `v0.2.5` and
+  `headSha` equal to the tag commit (that tag's workflow file predates
+  the publish change, so the run was a local build with no push);
+- `docker buildx imagetools inspect --raw` on
+  `ghcr.io/eshu-hq/eshu-mcp:0.2.5` hashes to the `Digest:` line.
+
+The first auto-released tag must still confirm what could not be
+checked that way:
+
+- a dispatched run on an annotated tag reports the tag commit (not the
+  tag object) as `headSha`, which the `auto-tag` poll matches on;
 - the full-history checkout (`fetch-depth: 0`) is enough for the
   ancestor check against `origin/main` and for the tag list;
-- GHCR returns the manifest bytes `docker buildx imagetools inspect
-  --raw` hashes in `verify-published`.
+- the dispatched run is allowed to push (`packages: write` through the
+  workflow token) the same way a tag-push run is.
 
 Watch the `release` run on the tag: `build-and-scan`, then `push`,
 then `github-release`. The release body records the pushed digest;
