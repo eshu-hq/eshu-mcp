@@ -92,26 +92,40 @@ resolves to the pushed digest, the moving `X.Y` and `X` tags resolve
 SBOM. `auto-tag` fails if the dispatch errors or no release run appears
 within about a minute, so a bare tag is never a silent outcome.
 
-The local tests stub the GitHub and registry behavior. Two points were
-checked live before the first auto-released tag, on a lightweight tag
-and a real image:
+The local tests stub the GitHub and registry behavior, so the points
+below were also checked against live runs (Refs `eshu-hq/eshu-mcp#53`).
 
-- `gh workflow run release.yml --ref refs/tags/v0.2.5` was accepted and
-  created a `workflow_dispatch` run with `head_branch` `v0.2.5` and
-  `headSha` equal to the tag commit (that tag's workflow file predates
-  the publish change, so the run was a local build with no push);
-- `docker buildx imagetools inspect --raw` on
-  `ghcr.io/eshu-hq/eshu-mcp:0.2.5` hashes to the `Digest:` line.
+Auto path, `v0.2.7`: merging #52 (label `release:patch`, merge commit
+`290246a0`) ran `auto-tag` (run `41272337425`), which logged `tagged
+290246a0... as v0.2.7` and `dispatched release.yml on v0.2.7`. The
+dispatched `release` run `41272348688` (event `workflow_dispatch`,
+`headBranch` `v0.2.7`, `headSha` `290246a0`) passed `build-and-scan`,
+`push`, `github-release`, and `verify-published`. `:0.2.7` and the
+Release body both record `sha256:5ae4cc13bc8ec5f4a50e4d35b56fc7b327001d1ee02b2c7ea3b24dbf7800d578`.
 
-The first auto-released tag must still confirm what could not be
-checked that way:
+Human path, `v0.2.8`: a manual tag push on `8d32de38` ran `release`
+`41273208189` (event `push`, same four jobs green). `:0.2.8`, `:0.2`,
+`:0`, and the Release body all record
+`sha256:fb370fd3ff8ef8cf19804bf2d1535cfd06d4ef275a165766611b3e658b9cc489`.
 
-- a dispatched run on an annotated tag reports the tag commit (not the
-  tag object) as `headSha`, which the `auto-tag` poll matches on;
+Confirmed by those runs:
+
+- the dispatch API accepts `--ref refs/tags/vX.Y.Z`, and the run's
+  `head_branch` is the tag name;
+- a dispatched run on an annotated tag (both tags are annotated)
+  reports the tag's commit, not the tag object, as `headSha`, which is
+  what the `auto-tag` poll matches on;
 - the full-history checkout (`fetch-depth: 0`) is enough for the
   ancestor check against `origin/main` and for the tag list;
-- the dispatched run is allowed to push (`packages: write` through the
-  workflow token) the same way a tag-push run is.
+- the dispatched run pushes with the workflow token
+  (`packages: write`) the same way a tag-push run does;
+- `docker buildx imagetools inspect --raw` hashes to the `Digest:` line
+  against GHCR, so the `verify-published` digest comparison works.
+
+Still open: the auto path (tag plus dispatch) has one live run,
+`v0.2.7`. A second one is expected on the next `release:patch` merge
+(the change that added this section carries that label); treat that
+run as the confirmation that `v0.2.7` was not a one-off.
 
 Watch the `release` run on the tag: `build-and-scan`, then `push`,
 then `github-release`. The release body records the pushed digest;
@@ -152,10 +166,9 @@ image only and skips the scan, login, push, attestations, SBOM, and
 the Release, so it proves the Dockerfile and workflow syntax without
 publishing anything.
 
-## First-cut status
+## Status
 
-The workflow is wired and `actionlint` plus the `image` lane prove it
-builds, but no tag has been cut from it yet. The first `v[0-9]*` push,
-its provenance verification, and its Trivy gate stay `NOT_CHECKED` until
-an owner cuts that tag. The router-surface/ranker delta (blocker 3 on
+The workflow has cut real releases: `v0.2.7` (auto) and `v0.2.8`
+(manual), each with Trivy, provenance, SBOM, and `verify-published`
+green (see above). The router-surface/ranker delta (blocker 3 on
 `eshu-hq/eshu#9521`) still gates any QA deploy and any cutover.

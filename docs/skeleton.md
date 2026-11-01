@@ -51,10 +51,10 @@ independent build, test, and image steps.
 
 ## NOT_CHECKED
 
-The release lane is wired (`release.yml`, multi-arch image, version stamp,
-provenance, scan record) but no tag has been cut from it: the first `v*`
-push, its digest, and its provenance/Trivy proof stay `NOT_CHECKED` until
-an owner cuts that tag. QA deployment from the destination artifact, parity
+The release lane has cut `v0.2.7` (auto-tag, then a dispatched release run)
+and `v0.2.8` (a human tag push), each with Trivy, provenance, SBOM and
+`verify-published` green; `docs/release.md` Status records the run ids and
+digests. QA deployment from the destination artifact, parity
 re-proof against the live core path, rehearsed rollback, owner production
 acceptance, and in-tree removal stay open too. Tool dispatch,
 authentication against live core, concurrency proofs, and the arbiter's

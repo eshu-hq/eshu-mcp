@@ -379,7 +379,13 @@ jobs:
           # pullable X.Y.Z image at the pushed digest and a Release that
           # records it. Anything else fails here, loudly.
           ver="${TAG#v}"
-          semver_re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          # semver 2.0 grammar, written by identifier (ERE has no \d or
+          # lookahead): numeric ids have no leading zero, alphanumeric ids
+          # carry at least one non-digit, and no id is empty.
+          num='(0|[1-9][0-9]*)'
+          pre_id='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          build_id='[0-9A-Za-z-]+'
+          semver_re="^v${num}\\.${num}\\.${num}(-${pre_id}(\\.${pre_id})*)?(\\+${build_id}(\\.${build_id})*)?\$"
           strict_re='^v[0-9]+\.[0-9]+\.[0-9]+$'
           # metadata-action's semver patterns emit tags only for valid
           # semver (and drop the v). A human push of v1.0 matches v[0-9]*
