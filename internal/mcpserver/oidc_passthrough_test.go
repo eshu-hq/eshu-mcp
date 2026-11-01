@@ -12,8 +12,8 @@ import (
 // The door classifies shape, not admission. "Bearer not-a-jwt" is admitted
 // here on purpose: core's file registry accepts any operator-chosen string,
 // so a length or charset rule would deny valid tokens while stopping no
-// attacker. The locally served methods that a forwarded principal reaches
-// without core admission are tracked in eshu-hq/eshu-mcp#50.
+// attacker. Whether core admits the credential is decided later, by
+// Admission (admission_test.go), before any locally served method answers.
 
 func TestVerifyOpaqueBearerPassesThrough(t *testing.T) {
 	t.Parallel()

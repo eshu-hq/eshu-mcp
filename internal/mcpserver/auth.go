@@ -87,26 +87,37 @@ func EdgeAuthMiddleware(sharedKey string, logger *slog.Logger) func(http.Handler
 // OAuth discovery is enabled, the bare challenge otherwise. The value is
 // fixed at wiring time from static operator config.
 func EdgeAuthMiddlewareWithChallenge(sharedKey, challenge string, logger *slog.Logger) func(http.Handler) http.Handler {
-	return edgeAuthMiddleware(sharedKey, challenge, challenge, nil, logger)
+	return edgeAuthMiddleware(sharedKey, challenge, challenge, nil, nil, logger)
 }
 
 // EdgeAuthMiddlewareWithVerifier is EdgeAuthMiddlewareWithChallenge plus
 // the door check: when verifier is non-nil, a dotted Bearer credential (a JWT
 // attempt) is verified against the configured issuers before it may proceed.
 // A dotless Bearer and any non-Bearer credential forward as a "fwd:"
-// principal and core admits them on dispatch; until eshu-hq/eshu-mcp#50
-// lands, initialize, tools/list, ping, and the SSE session mint answer such a
-// principal without core admission. An unrecognized
+// principal and core admits them on dispatch; this constructor leaves them
+// unprobed, so a deployment wires EdgeAuthMiddlewareWithAdmission to refuse
+// them on the locally served methods too. An unrecognized
 // credential answers the discovery challenge so capable clients steer at
 // the metadata document; a post-match failure (recognized issuer, wrong
 // audience or bad crypto) answers the bare challenge and never steers.
 // A nil verifier keeps the legacy behavior exactly: any present credential
 // passes and core admits on dispatch.
 func EdgeAuthMiddlewareWithVerifier(sharedKey string, discovery DiscoveryConfig, verifier *TokenVerifier, logger *slog.Logger) func(http.Handler) http.Handler {
-	return edgeAuthMiddleware(sharedKey, discovery.ChallengeValue(), BareChallenge, verifier, logger)
+	return edgeAuthMiddleware(sharedKey, discovery.ChallengeValue(), BareChallenge, verifier, nil, logger)
 }
 
-func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge string, verifier *TokenVerifier, logger *slog.Logger) func(http.Handler) http.Handler {
+// EdgeAuthMiddlewareWithAdmission is EdgeAuthMiddlewareWithVerifier plus core
+// admission of forwarded principals (eshu-hq/eshu-mcp#50): a dotless Bearer
+// or non-Bearer credential the edge cannot verify is served only after core
+// admits it. Core's 401 or 403 is relayed with its challenge, and a core that
+// cannot answer fails closed with a retryable 503. The shared key and an
+// edge-verified JWT never cost a probe. A nil admission keeps
+// EdgeAuthMiddlewareWithVerifier exactly.
+func EdgeAuthMiddlewareWithAdmission(sharedKey string, discovery DiscoveryConfig, verifier *TokenVerifier, admission *Admission, logger *slog.Logger) func(http.Handler) http.Handler {
+	return edgeAuthMiddleware(sharedKey, discovery.ChallengeValue(), BareChallenge, verifier, admission, logger)
+}
+
+func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge string, verifier *TokenVerifier, admission *Admission, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
@@ -148,6 +159,18 @@ func edgeAuthMiddleware(sharedKey, unrecognizedChallenge, postMatchChallenge str
 						"method", r.Method, "path", r.URL.Path)
 				}
 				return
+			}
+			if admission != nil && needsAdmission(principal) {
+				decision := admission.admit(r.Context(), principal, header)
+				switch decision.kind {
+				case admissionDenied:
+					writeAdmissionDenied(w, r, decision, unrecognizedChallenge)
+					return
+				case admissionUnavailable:
+					writeAdmissionUnavailable(w, r)
+					return
+				case admissionAdmitted:
+				}
 			}
 			next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), principal)))
 		})

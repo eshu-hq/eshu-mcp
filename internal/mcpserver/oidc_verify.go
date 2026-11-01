@@ -7,12 +7,11 @@ package mcpserver
 //
 // The door classifies shape; it does not admit. A dotless Bearer (Eshu
 // personal and scoped tokens carry no claims to check) and every non-Bearer
-// scheme forward as a "fwd:" principal, and core admits them on dispatch.
-// tools/call is therefore gated by core, but the locally served surface
-// (initialize, tools/list, ping, and the GET /sse session mint) answers any
-// forwarded principal without core admission. Core refuses those methods
-// uniformly, so this is a known parity gap tracked in eshu-hq/eshu-mcp#50.
-// Without discovery, Bearer JWTs forward the same way.
+// scheme forward as a "fwd:" principal. Verify only classifies them; the
+// middleware then asks core to admit each one (see Admission) before it
+// serves initialize, tools/list, ping, or the GET /sse session mint, and core
+// still admits tools/call on dispatch. Without discovery, Bearer JWTs forward
+// the same way and are admitted by core the same way.
 //
 // Operator constraint: core treats exactly three non-empty dot-separated
 // segments as a JWT and lets every other shape fall through to its token

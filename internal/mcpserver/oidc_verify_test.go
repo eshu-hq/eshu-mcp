@@ -5,7 +5,7 @@ package mcpserver
 // known issuer, an audience matching the resource, a live expiry, and a
 // signature from the issuer's JWKS, or it is refused at the edge before
 // dispatch. Dotless Bearer and non-Bearer credentials forward to core
-// (see oidc_passthrough_test.go and eshu-hq/eshu-mcp#50).
+// (see oidc_passthrough_test.go) and are admitted by it (admission_test.go).
 
 import (
 	"crypto/hmac"

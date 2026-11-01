@@ -44,11 +44,22 @@ The edge door check classifies credentials by shape and does not admit them.
 
 - A dotted Bearer credential is a JWT attempt and is verified at the door.
 - A dotless Bearer (Eshu personal and scoped tokens) and any non-Bearer scheme
-  forward to core as a `fwd:` principal. Core admits them on `tools/call`
-  dispatch.
-- `initialize`, `tools/list`, `ping`, and the `GET /sse` session mint answer a
-  forwarded principal without core admission. Core refuses these uniformly, so
-  this is an open parity gap, tracked in eshu-hq/eshu-mcp#50.
+  forward as a `fwd:` principal. The edge then asks core to admit it before it
+  serves `initialize`, `tools/list`, `ping`, or the `GET /sse` session mint,
+  which is what core does for every method (eshu-hq/eshu-mcp#50, the owner
+  ruling on #27). Core still admits `tools/call` on dispatch.
+- The admission probe is `GET /api/v0/capabilities?limit=1` with the caller's
+  `Authorization` header verbatim. It is authenticated, carries no tenant data,
+  and core lets every credential class it accepts call it. A 200 admits; a 401
+  or 403 is relayed with core's `WWW-Authenticate`; any other status, a
+  timeout, or no answer fails closed with a retryable 503. Decisions are cached
+  by credential hash: 30 seconds for an admit, 10 seconds for a denial, never
+  for a 503, and at most 4096 entries. A revoked credential can keep reaching
+  the locally served methods for up to the admit TTL; `tools/call` is
+  re-admitted by core every time. The shared key and an edge-verified JWT never
+  probe.
+- `/healthz` reports `admission` counters (`admitted`, `denied`, `unavailable`,
+  `cache_hit`) so an operator can tell a core outage from a denial storm.
 - Operator constraint: core treats exactly three non-empty dot-separated
   segments as a JWT; any other shape falls through to its token registries.
   The edge treats any dotted Bearer as a JWT attempt. A token in
