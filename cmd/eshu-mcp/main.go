@@ -166,10 +166,16 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 			return rank.New(tools)
 		}),
 	}
+	var admission *mcpserver.Admission
 	if authEnforced {
 		// The door check runs exactly when discovery is configured: the
 		// issuers are known, so Bearer JWTs can be verified at the edge.
-		// Without discovery the legacy pass-through stands and core admits.
+		// Without discovery Bearer JWTs forward like any other credential.
+		// Either way a credential the edge cannot verify (a dotless Bearer
+		// or a non-Bearer scheme) is served only after core admits it
+		// (eshu-hq/eshu-mcp#50), so initialize, tools/list, ping, and the
+		// SSE session mint turn bad callers away at the door.
+		admission = mcpserver.NewAdmission(client, logOut)
 		var verifier *mcpserver.TokenVerifier
 		if discovery.Enabled() {
 			if logOut != nil {
@@ -183,7 +189,7 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 			verifier = mcpserver.NewTokenVerifier(discovery.Resource, discovery.Issuers, apiKey)
 		}
 		opts = append(opts, mcpserver.WithTransportAuth(
-			mcpserver.EdgeAuthMiddlewareWithVerifier(apiKey, discovery, verifier, logOut)))
+			mcpserver.EdgeAuthMiddlewareWithAdmission(apiKey, discovery, verifier, admission, logOut)))
 	}
 	// The escape-hatch caller passes apiKey "" with transport auth off: every
 	// dispatch still forwards the caller credential to core for admission.
@@ -195,11 +201,21 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 	discovery.Mount(extra)
 	extra.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]any{
+		health := map[string]any{
 			"contract": eshuregistry.ContractVersion(),
 			"tools":    advertised,
 			"core":     coreBaseURL,
-		}); err != nil {
+		}
+		if admission != nil {
+			stats := admission.Stats()
+			health["admission"] = map[string]int64{
+				"admitted":    stats.Admitted,
+				"denied":      stats.Denied,
+				"unavailable": stats.Unavailable,
+				"cache_hit":   stats.CacheHit,
+			}
+		}
+		if err := json.NewEncoder(w).Encode(health); err != nil {
 			return
 		}
 	})

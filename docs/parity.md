@@ -38,6 +38,41 @@ Run `python3 scripts/check-parity.py` to re-verify the in-repo invariants.
 Cross-repo byte-parity re-verification needs the source checkout; the
 commands are recorded above.
 
+## Edge credential admission (eshu-hq/eshu-mcp#48, #50)
+
+The edge door check classifies credentials by shape and does not admit them.
+
+- A dotted Bearer credential is a JWT attempt and is verified at the door.
+- A dotless Bearer (Eshu personal and scoped tokens) and any non-Bearer scheme
+  forward as a `fwd:` principal. The edge then asks core to admit it before it
+  serves `initialize`, `tools/list`, `ping`, or the `GET /sse` session mint,
+  which is what core does for every method (eshu-hq/eshu-mcp#50, the owner
+  ruling on #27). Core still admits `tools/call` on dispatch.
+- The admission probe is `GET /api/v0/capabilities?limit=1` with the caller's
+  `Authorization` header verbatim. It is authenticated, carries no tenant data,
+  and core lets every credential class it accepts call it. A 200 admits; a 401
+  is relayed with core's `WWW-Authenticate` (the edge's own challenge when core
+  sent none); a 403 is relayed as a 403 without a challenge; any other status,
+  a timeout, or no answer fails closed with a retryable 503. Decisions are
+  cached by credential hash: 30 seconds for an admit, 10 seconds for a denial,
+  never for a 503, and at most 4096 entries; a full cache evicts the entry
+  closest to expiry, so a repeated credential still costs one probe per TTL.
+  A revoked credential can keep reaching
+  the locally served methods for up to the admit TTL; `tools/call` is
+  re-admitted by core every time. The shared key and an edge-verified JWT never
+  probe.
+- `/healthz` reports `admission` counters (`admitted`, `denied`, `unavailable`,
+  `cache_hit`) so an operator can tell a core outage from a denial storm.
+- Operator constraint: core treats exactly three non-empty dot-separated
+  segments as a JWT; any other shape falls through to its token registries.
+  The edge treats any dotted Bearer as a JWT attempt. A token in
+  `ESHU_SCOPED_TOKENS_FILE` that contains a dot is therefore refused at the
+  edge, although core would accept it unless it has the three-segment JWT
+  shape. Use dotless tokens.
+- The edge denial log line carries the same message and `iss` and `outcome`
+  keys as core's `deny()` line, plus `method` and `path`. The E2E scraper
+  matches on the message and `outcome`.
+
 ## NOT_CHECKED
 
 Live MCP calls against deployed artifacts, QA EKS proof, concurrent
