@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -128,7 +130,9 @@ func TestWireServerBoundsSSESessionsProcessWideFromEnv(t *testing.T) {
 		"ESHU_API_KEY":                    "deploy-key",
 		"ESHU_MCP_MAX_SSE_SESSIONS_TOTAL": "1",
 	})
-	_, server, extra, err := wireServer([]string{"--core-base-url", "https://core:8443"}, getenv, quietLogger())
+	logs := &logSink{}
+	_, server, extra, err := wireServer([]string{"--core-base-url", "https://core:8443"}, getenv,
+		slog.New(slog.NewJSONHandler(logs, nil)))
 	if err != nil {
 		t.Fatalf("wireServer() error = %v", err)
 	}
@@ -152,10 +156,9 @@ func TestWireServerBoundsSSESessionsProcessWideFromEnv(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	// A different spelling of the shared key is the same principal; a
-	// distinct forwarded credential needs core admission, so use the ceiling
-	// check through the shared key's second session instead.
-	// The deadline keeps a missing ceiling a failed assertion, not a hang.
+	// A second session through the same shared key: the default per-principal
+	// cap (32) is nowhere near, so only the ceiling of 1 can refuse it. The
+	// deadline keeps a missing ceiling a failed assertion, not a hang.
 	secondCtx, secondCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer secondCancel()
 	second := httptest.NewRequest(http.MethodGet, "/sse", nil).WithContext(secondCtx)
@@ -164,6 +167,21 @@ func TestWireServerBoundsSSESessionsProcessWideFromEnv(t *testing.T) {
 	mux.ServeHTTP(secondRec, second)
 	if secondRec.Code != http.StatusTooManyRequests {
 		t.Fatalf("session over the ceiling = %d, want 429", secondRec.Code)
+	}
+	var refusal struct {
+		Error struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(secondRec.Body.Bytes(), &refusal); err != nil {
+		t.Fatalf("decode ceiling 429 body %q: %v", secondRec.Body.String(), err)
+	}
+	if refusal.Error.Code != -32002 || refusal.Error.Message != "too many open sessions; close one or retry shortly" {
+		t.Errorf("ceiling 429 error = %+v, want code -32002 and the neutral message", refusal.Error)
+	}
+	if out := logs.String(); !strings.Contains(out, "sse_session_ceiling_reached") || strings.Contains(out, "sse_session_cap_reached") {
+		t.Errorf("log = %s\nwant the ceiling outcome and not the per-principal one", out)
 	}
 	cancel()
 	<-done
@@ -178,4 +196,22 @@ func TestWireServerBoundsSSESessionsProcessWideFromEnv(t *testing.T) {
 			t.Errorf("value %q: wireServer() error = %v, want a refusal naming the variable", value, err)
 		}
 	}
+}
+
+// logSink is a goroutine-safe log destination for asserting log outcomes.
+type logSink struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *logSink) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *logSink) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
 }

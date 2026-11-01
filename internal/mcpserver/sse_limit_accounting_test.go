@@ -195,3 +195,51 @@ func TestCeilingAccountingSurvivesDoubleUnregister(t *testing.T) {
 		t.Errorf("ceiling after the round trip is not exactly %d: %v", ceiling, got)
 	}
 }
+
+// TestRegisterSessionConcurrentNeverExceedsCeiling hammers the process-wide
+// ceiling the way the per-principal stress test hammers the cap: 512
+// goroutines over distinct principals, each far below its own cap, against a
+// ceiling of 7. Only the ceiling can refuse, so a regression that splits its
+// check from the insert (read under RLock, then insert under Lock) admits more
+// than 7.
+//
+// Stress evidence, not proof: the atomicity is one sessMu section and this
+// test catches a split only when the scheduler interleaves the halves. It
+// does catch the widened-window mutation (check, sleep, insert) reliably.
+func TestRegisterSessionConcurrentNeverExceedsCeiling(t *testing.T) {
+	t.Parallel()
+
+	const (
+		ceiling  = 7
+		attempts = 512
+	)
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := NewServer(registry.Definitions(), nil, quiet, "t", "t",
+		WithMaxSSESessionsPerPrincipal(10), WithMaxSSESessions(ceiling))
+
+	var (
+		admitted atomic.Int64
+		wg       sync.WaitGroup
+		start    = make(chan struct{})
+	)
+	for i := range attempts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			sess := &sseSession{principal: fmt.Sprintf("p-%d", i)}
+			if s.registerSession(fmt.Sprintf("c-%d", i), sess) == sseAdmitted {
+				admitted.Add(1)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if admitted.Load() != ceiling {
+		t.Errorf("admitted = %d, want exactly %d", admitted.Load(), ceiling)
+	}
+	if got := s.SSEStats().Active; got != ceiling {
+		t.Errorf("Active = %d, want %d", got, ceiling)
+	}
+}
