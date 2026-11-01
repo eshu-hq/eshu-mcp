@@ -44,6 +44,15 @@ tag patterns emit nothing for it), so `verify-published` checks that
 tag against the pushed digest instead of `:X.Y.Z`. A dispatch must name
 a strict `vX.Y.Z` tag.
 
+## Before you re-pin a deployment (v0.2.8 and later)
+
+v0.2.8 is the first release that limits SSE sessions: 32 per principal and
+2048 per process. Everyone behind the shared `ESHU_API_KEY` is one principal
+and shares the 32, and a refused client gets a `429` that some clients do not
+retry. Check who uses the shared key and set
+`ESHU_MCP_MAX_SSE_SESSIONS_PER_PRINCIPAL` before the rollout. See
+[operations](operations.md).
+
 ## Recovery
 
 If a tag exists but has no `release` run or Release (the dispatch

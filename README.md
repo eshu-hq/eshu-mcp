@@ -35,6 +35,9 @@ imports them first. See
 - `docs/parity.md`: parity method and seed-time results.
 - `docs/skeleton.md`: the walking-skeleton server, its proof, and what stays
   unchecked.
+- `docs/operations.md`: operator note on the per-principal SSE session
+  limit (32; everyone behind the shared key shares it). Read before a
+  re-pin to v0.2.8 or later.
 - `docs/release.md`: tag `v*` and `main`-push release to GHCR with
   provenance, SBOM, and Trivy gate (see `.github/workflows/release.yml`).
 - `registry.go` (module root): the served registry, embedded from the
