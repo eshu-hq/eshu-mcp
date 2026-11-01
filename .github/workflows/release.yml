@@ -1,21 +1,41 @@
 # eshu-mcp release (Refs eshu-hq/eshu#9521, part of eshu-hq/eshu#6707).
 #
-# Every push to `main` and every `v[0-9]*` tag push publishes
+# Every push to `main` and every `v[0-9]*` tag publishes
 # `ghcr.io/eshu-hq/eshu-mcp` images with SLSA provenance, an SPDX SBOM,
-# SBOM attestation, and a Trivy vulnerability gate, then a tag push cuts
+# SBOM attestation, and a Trivy vulnerability gate, then a tag run cuts
 # a GitHub Release carrying the SBOM. Main pushes publish the moving
-# `main`, `latest`, and `sha-<full-sha>` tags; tag pushes publish the
-# semver tags exactly as before. PRs never push: the `image` lane in
-# ci.yml proves the Dockerfile still builds. A manual dispatch builds the
-# local image without scanning or pushing to prove the workflow itself
-# works.
+# `main`, `latest`, and `sha-<full-sha>` tags; tag runs publish the semver
+# tags exactly as before. PRs never push: the `image` lane in ci.yml
+# proves the Dockerfile still builds.
+#
+# Tag runs have two entry points that run the identical publish path:
+# a `v[0-9]*` tag push, and a `workflow_dispatch` whose ref is a tag.
+# The second exists because auto-tag.yml pushes tags with the default
+# GITHUB_TOKEN, and GitHub does not start workflow runs from events that
+# token causes, except workflow_dispatch and repository_dispatch (GitHub
+# docs, "Triggering a workflow from a workflow"). auto-tag therefore runs
+# `gh workflow run release.yml --ref refs/tags/vX.Y.Z` after pushing the tag. The
+# same command is the manual recovery for a tag that has no release run:
+#   gh workflow run release.yml --ref refs/tags/vX.Y.Z
+# A dispatch runs the workflow file as it exists at the given ref, so a
+# tag cut before this handling landed cannot be released this way. A tag
+# dispatch is also refused when the tag already has a Release, its
+# commit is not on main, or it is not the newest vX.Y.Z tag, so it can only complete a missing release, never
+# replay one or move the floating tags back.
+# A manual dispatch on a branch builds the local image without scanning
+# or pushing, to prove the workflow itself works. Conditions key off
+# `github.ref_type == 'tag'`, never the event name alone, so a branch
+# dispatch can never reach `push`.
 #
 # Gate order is the safety contract: `build-and-scan` builds a local-only
 # image and fails on any HIGH/CRITICAL CVE, `push` runs only after that
 # gate passes and publishes the multi-arch image with attestations, and
-# `github-release` (tag events only) cuts the Release. A failed scan
+# `github-release` (tag runs only) cuts the Release. A failed scan
 # leaves nothing pullable in GHCR because no tag is ever pushed before
-# the scan passes, on main or on a version tag.
+# the scan passes, on main or on a version tag. On tag runs a final
+# `verify-published` job re-checks that `:X.Y.Z` resolves to
+# the pushed digest and that the Release records it, so a green tag run
+# always means a pullable image and a Release.
 #
 # The Dockerfile VERSION arg stamps the tag into the binary with
 # `-ldflags "-X main.version=..."`, so the initialize handshake reports the
@@ -69,16 +89,70 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Refuse replayed or off-main tag dispatch
+        # A dispatch on a tag is the auto-tag hand-off and the manual
+        # recovery path. It must not re-publish a tag that already has a
+        # Release (that would also move the floating X.Y and X tags back
+        # to an older build) or a tag whose commit is not on main. The
+        # human tag-push route is unchanged.
+        if: github.event_name == 'workflow_dispatch' && github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          rc=0
+          out="$(gh api "repos/${GH_REPO}/releases/tags/${TAG}" --jq .html_url 2>&1)" || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::Release ${TAG} already exists (${out}); refusing to republish it by dispatch" >&2
+            exit 1
+          fi
+          # Fail closed: only an explicit HTTP 404 means the tag is unreleased.
+          case "$out" in
+            *"HTTP 404"*) ;;
+            *) echo "::error::cannot tell whether ${TAG} is released: ${out}" >&2; exit 1 ;;
+          esac
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::${TAG} (${GITHUB_SHA}) is not on main; refusing to publish it by dispatch" >&2
+            exit 1
+          fi
+          # Only the newest vX.Y.Z may be released by dispatch: recovering
+          # a lower tag would move the floating X.Y and X tags backward.
+          # Strict anchoring ignores pre-release tags. grep exits 1 on no
+          # match, so it is wrapped to let the empty-result message below
+          # fire; an unreadable tag list still aborts (set -e + pipefail).
+          git fetch --quiet --tags --force origin
+          newest="$(git tag --list 'v[0-9]*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1)"
+          if [ -z "$newest" ]; then
+            echo "::error::no vX.Y.Z tag found; refusing to publish ${TAG} by dispatch" >&2
+            exit 1
+          fi
+          if [ "$newest" != "$TAG" ]; then
+            echo "::error::${TAG} is not the newest tag (${newest}); superseded tags are not released by dispatch" >&2
+            exit 1
+          fi
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Validate version stamp
         env:
           VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          REF_TYPE: ${{ github.ref_type }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           # The Dockerfile interpolates VERSION into a shell-form RUN for
           # ldflags, so refuse anything but tag/sha characters before the
           # build can interpret them.
           if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9._-]+$'; then
             echo "refusing unsafe VERSION stamp: $VERSION" >&2
+            exit 1
+          fi
+          # A workflow_dispatch can name any tag, so it must be a strict
+          # vX.Y.Z. A tag push already passed the v[0-9]* trigger and keeps
+          # the permissive check above (pre-release tags still publish).
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$REF_TYPE" = "tag" ] \
+            && ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "refusing to publish non-version tag: $VERSION" >&2
             exit 1
           fi
       - name: Build local image for scanning
@@ -95,7 +169,7 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
       - name: Scan local image for HIGH/CRITICAL CVEs
-        if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
+        if: github.ref_type == 'tag' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # 0.36.0
         with:
           image-ref: ${{ env.SCAN_IMAGE_REF }}
@@ -114,7 +188,7 @@ jobs:
 
   push:
     needs: [build-and-scan]
-    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
+    if: github.ref_type == 'tag' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -159,12 +233,22 @@ jobs:
       - name: Validate version stamp
         env:
           VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          REF_TYPE: ${{ github.ref_type }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           # The Dockerfile interpolates VERSION into a shell-form RUN for
           # ldflags, so refuse anything but tag/sha characters before the
           # build can interpret them.
           if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9._-]+$'; then
             echo "refusing unsafe VERSION stamp: $VERSION" >&2
+            exit 1
+          fi
+          # A workflow_dispatch can name any tag, so it must be a strict
+          # vX.Y.Z. A tag push already passed the v[0-9]* trigger and keeps
+          # the permissive check above (pre-release tags still publish).
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$REF_TYPE" = "tag" ] \
+            && ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "refusing to publish non-version tag: $VERSION" >&2
             exit 1
           fi
       - name: Compute source date epoch
@@ -177,6 +261,22 @@ jobs:
           { printf '%s\n' '${{ steps.meta-tag.outputs.labels }}'; printf '%s\n' '${{ steps.meta-branch.outputs.labels }}'; } > /tmp/labels.txt
           sed -i "s|org\\.opencontainers\\.image\\.created=.*|org.opencontainers.image.created=${CREATED}|" /tmp/labels.txt
           { echo 'labels<<EOF'; cat /tmp/labels.txt; echo 'EOF'; } >> "${GITHUB_OUTPUT}"
+      - name: Re-check newest tag before publishing
+        # build-and-scan can run for many minutes before this job starts, and
+        # a newer tag may have been released in that gap. Re-check right
+        # before the step that writes the floating X.Y and X tags (this also
+        # covers a re-run of just this job). Same rule as the first check.
+        if: github.event_name == 'workflow_dispatch' && github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet --tags --force origin
+          newest="$(git tag --list 'v[0-9]*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1)"
+          if [ "$newest" != "$TAG" ]; then
+            echo "::error::${TAG} is no longer the newest tag (${newest:-none}); not publishing floating tags" >&2
+            exit 1
+          fi
       - name: Build and push image
         id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -250,3 +350,74 @@ jobs:
             Image: `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.push.outputs.digest }}`
             Provenance and SBOM attestations are attached to the image in GHCR.
             Scan: Trivy HIGH/CRITICAL gate passed on this digest before push.
+
+  verify-published:
+    needs: [push, github-release]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Log in to Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the tag's image and Release exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          DIGEST: ${{ needs.push.outputs.digest }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          # Last line of defense: a tag run that goes green must leave a
+          # pullable X.Y.Z image at the pushed digest and a Release that
+          # records it. Anything else fails here, loudly.
+          ver="${TAG#v}"
+          semver_re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          strict_re='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          # metadata-action's semver patterns emit tags only for valid
+          # semver (and drop the v). A human push of v1.0 matches v[0-9]*
+          # and still publishes, but only as sha-<full>, so verify that
+          # tag instead of a :1.0 that does not exist.
+          if printf '%s' "$TAG" | grep -Eq "$semver_re"; then
+            want_tag="$ver"
+          else
+            echo "::notice::${TAG} is not valid semver; only the sha tag is published, verifying that"
+            want_tag="sha-${GITHUB_SHA}"
+          fi
+          # The verified tag is immutable per release: it must equal the
+          # pushed digest.
+          got="sha256:$(docker buildx imagetools inspect --raw "${IMAGE}:${want_tag}" | sha256sum | cut -d' ' -f1)"
+          if [ "$got" != "$DIGEST" ]; then
+            echo "::error::${IMAGE}:${want_tag} is ${got}, want ${DIGEST}" >&2
+            exit 1
+          fi
+          # X.Y and X move with later patches: they must only resolve. A
+          # pre-release or non-semver tag (human tag push only) is not
+          # assumed to publish them.
+          if [ "$want_tag" = "$ver" ] && printf '%s' "$TAG" | grep -Eq "$strict_re"; then
+            major="${ver%%.*}"
+            rest="${ver#*.}"
+            minor="${rest%%.*}"
+            for t in "${major}.${minor}" "$major"; do
+              docker buildx imagetools inspect --raw "${IMAGE}:${t}" >/dev/null
+            done
+          else
+            echo "::notice::${TAG} is not a strict vX.Y.Z tag; skipping the moving-tag checks"
+          fi
+          body="$(gh release view "$TAG" --json body --jq .body)"
+          case "$body" in
+            *"$DIGEST"*) ;;
+            *) echo "::error::Release ${TAG} does not record ${DIGEST}" >&2; exit 1 ;;
+          esac
+          assets="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          if ! grep -qx 'eshu-mcp-image-spdx.json' <<<"$assets"; then
+            echo "::error::Release ${TAG} has no eshu-mcp-image-spdx.json asset" >&2
+            exit 1
+          fi
