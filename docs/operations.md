@@ -20,8 +20,9 @@ JWTs) each get their own 32.
 | --- | --- | --- |
 | `ESHU_API_KEY` (shared key) | one principal named `shared` | 32 for everyone using it |
 | Personal or scoped token | one per token | 32 per token |
-| OIDC JWT | one per distinct credential | 32 per credential |
-| Transport auth off (loopback only) | one anonymous principal | 32 for everyone |
+| OIDC JWT, verified at the edge | one per issuer and `sub` claim | 32 per user, shared by all of that user's tokens |
+| Other credential forwarded to core without edge verification | one per distinct credential | 32 per credential |
+| Transport auth off (the escape hatch: no credential check) | one anonymous principal | 32 for everyone |
 
 There is also a process-wide ceiling of **2048** sessions across all
 principals (`ESHU_MCP_MAX_SSE_SESSIONS_TOTAL`).
@@ -78,11 +79,14 @@ cap keeps one leaking or looping client from being contained.
 { "sse": { "active": 14, "rejected": 0 } }
 ```
 
-- `sse.active`: sessions open now. Compare it with the cap: a shared key near
-  32 is about to refuse callers.
+- `sse.active`: sessions open now, summed over all principals. Compare it
+  with the process ceiling (2048). It cannot show how close one principal is
+  to its cap of 32, because `/healthz` reports no per-principal figure.
 - `sse.rejected`: refusals since the process started, per-principal cap and
   process ceiling counted together. It only grows; a rise between two scrapes
-  means callers were refused in that window.
+  means callers were refused in that window. This is the signal that a
+  principal, most likely the shared key, has hit its cap. Confirm which limit
+  it was from the refusal log `outcome` below.
 
 The refusal log line is a warning. Its `outcome` field tells the two limits
 apart and names the limit, but never the principal:
