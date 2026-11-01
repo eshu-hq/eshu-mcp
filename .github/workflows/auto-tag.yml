@@ -4,10 +4,16 @@
 # patch version on its own, so routine patches release without the dead
 # wait on a manual `git push origin vX.Y.Z` (issue #40: #35 merged and
 # v0.2.2 waited ~6h on a manual tag push). The tag push is the only
-# publishing event: `release.yml` (trigger `v[0-9]*`) builds, scans,
-# pushes, and cuts the Release from there. Minor/major bumps and any
-# merge without the label stay manual: version judgment stays human,
-# only the routine-patch wait is automated.
+# publishing event, but this job pushes it with the default GITHUB_TOKEN,
+# and GitHub does not start workflow runs from events that token causes
+# (except workflow_dispatch and repository_dispatch; GitHub docs,
+# "Triggering a workflow from a workflow"), so release.yml's `v[0-9]*`
+# push trigger never fires for it. The job therefore dispatches
+# `release.yml` on the new tag itself (`gh workflow run`), and release.yml
+# treats a dispatch on a tag ref exactly like the tag push: build, scan,
+# push, cut the Release. Minor/major bumps and any merge without the label
+# stay manual: version judgment stays human, only the routine-patch wait
+# is automated.
 #
 # Safety contract:
 # - The job starts only for merged PRs to `main` with the label (the
@@ -21,6 +27,12 @@
 #   HEAD that already carries a `v*` tag is a quiet no-op.
 # - A labeled PR from a fork fails loudly at push (read-only token):
 #   never a silent skip.
+# - The dispatch step runs only after a real tag push (never on the dry
+#   run) and skips when a release run for that tag already exists, so a
+#   tag push that did start its own run cannot be published twice.
+# - Recovery: if the tag exists but its release run is missing (dispatch
+#   failed, or a re-run hit the "already tagged" no-op), start it by hand:
+#     gh workflow run release.yml --ref vX.Y.Z
 #
 # Pinned actions (re-verify with git ls-remote when auditing; Dependabot
 # github-actions proposes bumps, weekly grouped):
@@ -34,7 +46,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: auto-tag
@@ -45,6 +57,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && contains(github.event.pull_request.labels.*.name, 'release:patch'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: write # push the tag
+      actions: write # dispatch release.yml on it
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -101,3 +116,22 @@ jobs:
           git push origin "$next"
           echo "tagged ${target} as ${next}"
           echo "tag=${next}" >> "$GITHUB_OUTPUT"
+      - name: Dispatch release for the new tag
+        # The dry run also sets steps.tag.outputs.tag, so exclude it by event.
+        if: github.event_name != 'workflow_dispatch' && steps.tag.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NEXT_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Tag pushes made with GITHUB_TOKEN start no run, so there is
+          # normally nothing here; if a run for this tag exists anyway,
+          # dispatching would publish the same tag twice.
+          existing="$(gh run list --workflow release.yml --branch "$NEXT_TAG" --limit 1 --json databaseId --jq 'length')"
+          if [ "$existing" != "0" ]; then
+            echo "release run already exists for ${NEXT_TAG}; not dispatching"
+            exit 0
+          fi
+          gh workflow run release.yml --ref "$NEXT_TAG"
+          echo "dispatched release.yml on ${NEXT_TAG}"

@@ -1,19 +1,33 @@
 # eshu-mcp release (Refs eshu-hq/eshu#9521, part of eshu-hq/eshu#6707).
 #
-# Every push to `main` and every `v[0-9]*` tag push publishes
+# Every push to `main` and every `v[0-9]*` tag publishes
 # `ghcr.io/eshu-hq/eshu-mcp` images with SLSA provenance, an SPDX SBOM,
-# SBOM attestation, and a Trivy vulnerability gate, then a tag push cuts
+# SBOM attestation, and a Trivy vulnerability gate, then a tag run cuts
 # a GitHub Release carrying the SBOM. Main pushes publish the moving
-# `main`, `latest`, and `sha-<full-sha>` tags; tag pushes publish the
-# semver tags exactly as before. PRs never push: the `image` lane in
-# ci.yml proves the Dockerfile still builds. A manual dispatch builds the
-# local image without scanning or pushing to prove the workflow itself
-# works.
+# `main`, `latest`, and `sha-<full-sha>` tags; tag runs publish the semver
+# tags exactly as before. PRs never push: the `image` lane in ci.yml
+# proves the Dockerfile still builds.
+#
+# Tag runs have two entry points that run the identical publish path:
+# a `v[0-9]*` tag push, and a `workflow_dispatch` whose ref is a tag.
+# The second exists because auto-tag.yml pushes tags with the default
+# GITHUB_TOKEN, and GitHub does not start workflow runs from events that
+# token causes, except workflow_dispatch and repository_dispatch (GitHub
+# docs, "Triggering a workflow from a workflow"). auto-tag therefore runs
+# `gh workflow run release.yml --ref vX.Y.Z` after pushing the tag. The
+# same command is the manual recovery for a tag that has no release run:
+#   gh workflow run release.yml --ref vX.Y.Z
+# A dispatch runs the workflow file as it exists at the given ref, so a
+# tag cut before this handling landed cannot be released this way.
+# A manual dispatch on a branch builds the local image without scanning
+# or pushing, to prove the workflow itself works. Conditions key off
+# `github.ref_type == 'tag'`, never the event name alone, so a branch
+# dispatch can never reach `push`.
 #
 # Gate order is the safety contract: `build-and-scan` builds a local-only
 # image and fails on any HIGH/CRITICAL CVE, `push` runs only after that
 # gate passes and publishes the multi-arch image with attestations, and
-# `github-release` (tag events only) cuts the Release. A failed scan
+# `github-release` (tag runs only) cuts the Release. A failed scan
 # leaves nothing pullable in GHCR because no tag is ever pushed before
 # the scan passes, on main or on a version tag.
 #
@@ -73,12 +87,18 @@ jobs:
       - name: Validate version stamp
         env:
           VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           # The Dockerfile interpolates VERSION into a shell-form RUN for
           # ldflags, so refuse anything but tag/sha characters before the
           # build can interpret them.
           if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9._-]+$'; then
             echo "refusing unsafe VERSION stamp: $VERSION" >&2
+            exit 1
+          fi
+          # A workflow_dispatch can name any tag; only vX.Y.Z may publish.
+          if [ "$REF_TYPE" = "tag" ] && ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "refusing to publish non-version tag: $VERSION" >&2
             exit 1
           fi
       - name: Build local image for scanning
@@ -95,7 +115,7 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
       - name: Scan local image for HIGH/CRITICAL CVEs
-        if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
+        if: github.ref_type == 'tag' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # 0.36.0
         with:
           image-ref: ${{ env.SCAN_IMAGE_REF }}
@@ -114,7 +134,7 @@ jobs:
 
   push:
     needs: [build-and-scan]
-    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
+    if: github.ref_type == 'tag' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -159,12 +179,18 @@ jobs:
       - name: Validate version stamp
         env:
           VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           # The Dockerfile interpolates VERSION into a shell-form RUN for
           # ldflags, so refuse anything but tag/sha characters before the
           # build can interpret them.
           if ! printf '%s' "$VERSION" | grep -Eq '^[A-Za-z0-9._-]+$'; then
             echo "refusing unsafe VERSION stamp: $VERSION" >&2
+            exit 1
+          fi
+          # A workflow_dispatch can name any tag; only vX.Y.Z may publish.
+          if [ "$REF_TYPE" = "tag" ] && ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "refusing to publish non-version tag: $VERSION" >&2
             exit 1
           fi
       - name: Compute source date epoch
