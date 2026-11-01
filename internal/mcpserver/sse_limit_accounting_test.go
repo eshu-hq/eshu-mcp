@@ -1,0 +1,143 @@
+package mcpserver
+
+import (
+	"fmt"
+	"io"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"testing"
+
+	registry "github.com/eshu-hq/eshu-mcp"
+)
+
+func accountingServer(capPerPrincipal int) *Server {
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return NewServer(registry.Definitions(), nil, quiet, "t", "t", WithMaxSSESessionsPerPrincipal(capPerPrincipal))
+}
+
+func registerN(t *testing.T, s *Server, principal, prefix string, n int) []string {
+	t.Helper()
+	ids := make([]string, 0, n)
+	for i := range n {
+		id := fmt.Sprintf("%s-%d", prefix, i)
+		if got := s.registerSession(id, &sseSession{principal: principal}); got != sseAdmitted {
+			t.Fatalf("registerSession(%s) = %v, want admitted", id, got)
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// TestUnregisterSessionIsIdempotentAndExact proves the slot is returned once
+// per registered id: a repeated or unknown unregister neither underflows the
+// count nor frees a slot that belongs to a live session, and the cap stays
+// exactly N afterwards.
+func TestUnregisterSessionIsIdempotentAndExact(t *testing.T) {
+	t.Parallel()
+
+	const capPerPrincipal = 3
+	s := accountingServer(capPerPrincipal)
+
+	ids := registerN(t, s, "p", "first", 1)
+	s.unregisterSession(ids[0])
+	s.unregisterSession(ids[0])      // second close of the same id
+	s.unregisterSession("never-set") // id that was never registered
+	if len(s.sseLimit.perPrincipal) != 0 || len(s.sessions) != 0 {
+		t.Fatalf("books not empty: perPrincipal=%v sessions=%d", s.sseLimit.perPrincipal, len(s.sessions))
+	}
+
+	registerN(t, s, "p", "again", capPerPrincipal)
+	if got := s.registerSession("over", &sseSession{principal: "p"}); got != sseAdmitPrincipalCap {
+		t.Errorf("cap after double unregister is not exactly %d: over-cap register = %v", capPerPrincipal, got)
+	}
+}
+
+// TestUnregisterSessionDoesNotTouchOtherSessions proves a duplicate unregister
+// of one session leaves its siblings' slots, and another principal's, intact.
+func TestUnregisterSessionDoesNotTouchOtherSessions(t *testing.T) {
+	t.Parallel()
+
+	s := accountingServer(2)
+	a := registerN(t, s, "a", "a", 2)
+	registerN(t, s, "b", "b", 1)
+
+	s.unregisterSession(a[0])
+	s.unregisterSession(a[0])
+	if got := s.sseLimit.perPrincipal["a"]; got != 1 {
+		t.Errorf("principal a count = %d, want 1 (one live sibling)", got)
+	}
+	if got := s.sseLimit.perPrincipal["b"]; got != 1 {
+		t.Errorf("principal b count = %d, want 1", got)
+	}
+	if got := s.registerSession("a-new", &sseSession{principal: "a"}); got != sseAdmitted {
+		t.Errorf("one freed slot did not admit one session: %v", got)
+	}
+	if got := s.registerSession("a-over", &sseSession{principal: "a"}); got != sseAdmitPrincipalCap {
+		t.Errorf("second register after one free = %v, want the cap refusal", got)
+	}
+}
+
+// TestSessionSlotsFreeOneAtATime opens N sessions, closes one, and asserts
+// exactly one more is admitted and the next refused.
+func TestSessionSlotsFreeOneAtATime(t *testing.T) {
+	t.Parallel()
+
+	const capPerPrincipal = 4
+	s := accountingServer(capPerPrincipal)
+	ids := registerN(t, s, "p", "s", capPerPrincipal)
+	if got := s.registerSession("full", &sseSession{principal: "p"}); got != sseAdmitPrincipalCap {
+		t.Fatalf("register at the cap = %v, want refusal", got)
+	}
+
+	s.unregisterSession(ids[0])
+	if got := s.registerSession("one", &sseSession{principal: "p"}); got != sseAdmitted {
+		t.Fatalf("register after one close = %v, want admitted", got)
+	}
+	if got := s.registerSession("two", &sseSession{principal: "p"}); got != sseAdmitPrincipalCap {
+		t.Fatalf("second register after one close = %v, want refusal", got)
+	}
+	if got := s.sseLimit.perPrincipal["p"]; got != capPerPrincipal {
+		t.Errorf("count = %d, want exactly %d", got, capPerPrincipal)
+	}
+}
+
+// TestRegisterSessionConcurrentNeverExceedsCap hammers registerSession
+// directly, with no HTTP in the way, so the contention on the check-and-insert
+// section is as high as it can be. Atomicity itself is a property of the code
+// (one sessMu section), which no hook can prove from outside; this test and
+// -race are the stress evidence. It is probabilistic: a regression that splits
+// the section fails it only when the scheduler interleaves the halves, and the
+// exact-count assertion makes that a likely, not certain, catch.
+func TestRegisterSessionConcurrentNeverExceedsCap(t *testing.T) {
+	t.Parallel()
+
+	const (
+		capPerPrincipal = 7
+		attempts        = 512
+	)
+	s := accountingServer(capPerPrincipal)
+	var (
+		admitted atomic.Int64
+		wg       sync.WaitGroup
+		start    = make(chan struct{})
+	)
+	for i := range attempts {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			if s.registerSession(fmt.Sprintf("c-%d", i), &sseSession{principal: "p"}) == sseAdmitted {
+				admitted.Add(1)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if admitted.Load() != capPerPrincipal {
+		t.Errorf("admitted = %d, want exactly %d", admitted.Load(), capPerPrincipal)
+	}
+	if got := s.sseLimit.perPrincipal["p"]; got != capPerPrincipal {
+		t.Errorf("count = %d, want %d", got, capPerPrincipal)
+	}
+}

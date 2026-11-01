@@ -75,19 +75,22 @@ The edge door check classifies credentials by shape and does not admit them.
 
 ### Admission latency (eshu-hq/eshu-mcp#50)
 
-`go test ./internal/mcpserver -run '^$' -bench AdmissionRequest -benchtime=200x -count=3`
+`go test ./internal/mcpserver -run '^$' -bench AdmissionRequest -benchtime=200x -count=5`
 drives `ping` behind the production admission middleware against a fake core
-whose probe takes a fixed 5ms (arm64 Linux, 16 cores):
+whose probe takes a fixed 5ms (arm64 Linux, 16 cores). Ranges over five runs:
 
 | Path | Per request | Core probes per request |
 | --- | --- | --- |
-| Cache hit (inside the 30s admit TTL) | about 6.4 microseconds | 0 |
-| No cache (every request probes) | about 5.24 ms | 1 |
+| Cache hit (inside the 30s admit TTL) | 6.4-7.9 microseconds | 0 |
+| No cache (every request probes) | 5.24-5.31 ms | 1 |
 
-The uncached cost is the core round trip plus about 0.24 ms of edge overhead,
-so the cache removes the probe from every request after the first inside the
-TTL. The ratio scales with real core latency; rerun the benchmark with
-`admissionProbeDelay` set to a measured value to size it for a deployment.
+The uncached time is the 5ms fake-core delay plus roughly 0.24-0.31 ms of
+loopback HTTP round trip and `time.Sleep` timer slack in the benchmark harness;
+it is not an estimate of edge middleware cost (the cache-hit row is the
+middleware cost). The cache removes the probe from every request after the
+first inside the TTL. The ratio scales with real core latency; rerun the
+benchmark with `admissionProbeDelay` set to a measured value to size it for a
+deployment.
 
 ## SSE session bound (eshu-hq/eshu-mcp#50)
 
@@ -117,6 +120,13 @@ it; a malformed or non-positive value fails the boot).
   taken in the same critical section that inserts the session and returned
   when the connection closes, so concurrent mints cannot pass the cap and a
   reconnecting client frees its own stale slot.
+- Client behavior: an `EventSource`-style client may treat a non-200 as fatal
+  and not honor `Retry-After`, so a refused client may not retry on its own.
+  A slot held by a dead peer frees only when its handler returns (the next
+  failed write or keepalive, or context cancel), so a reconnect storm can
+  briefly consume slots against the cap. Operators behind a shared key should
+  raise the cap (`ESHU_MCP_MAX_SSE_SESSIONS_PER_PRINCIPAL`) above their
+  expected concurrent clients plus reconnect overlap.
 - `/healthz` reports `sse.active` (live sessions) and `sse.rejected`
   (refusals since start). The refusal log line carries `outcome`
   `sse_session_cap_reached` and the cap, never the principal.

@@ -208,6 +208,9 @@ func TestSSESessionCapBoundsUnauthenticatedTransport(t *testing.T) {
 	}
 }
 
+// Probabilistic by nature: the check-and-insert atomicity is one sessMu
+// section, so this and -race are stress evidence, not a proof; the direct
+// registerSession stress in sse_limit_accounting_test.go is the tighter loop.
 // TestSSESessionCapNeverExceededUnderConcurrentMints races many mints for one
 // principal against a small cap: exactly cap sessions are admitted, every
 // other request is refused, and the live count never passes the cap.
