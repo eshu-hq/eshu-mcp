@@ -1,9 +1,11 @@
 package mcpserver
 
 // Edge OIDC verification, proving the door check the owner requires:
-// when discovery is configured, a Bearer JWT must carry a known issuer,
-// an audience matching the resource, a live expiry, and a signature from
-// the issuer's JWKS. Anything else is refused at the edge before dispatch.
+// when discovery is configured, a dotted Bearer (a JWT attempt) must carry a
+// known issuer, an audience matching the resource, a live expiry, and a
+// signature from the issuer's JWKS, or it is refused at the edge before
+// dispatch. Dotless Bearer and non-Bearer credentials forward to core
+// (see oidc_passthrough_test.go and eshu-hq/eshu-mcp#50).
 
 import (
 	"crypto/hmac"

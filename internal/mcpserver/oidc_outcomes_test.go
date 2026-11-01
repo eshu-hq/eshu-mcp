@@ -127,9 +127,10 @@ func TestVerifyOutcomeVocabulary(t *testing.T) {
 // TestMiddlewareDenialLogShape proves the edge log line the E2E leakage
 // matrix scrapes: message plus iss plus outcome as one JSON object, parsed
 // the same way the matrix parser parses it. Core's deny() logs the same
-// message and the same iss and outcome keys (eshu go/internal/oidcbearer/
-// resolver.go, Warn at e974c50224); the edge adds method and path, so the
-// lines are scraper-compatible, not byte-identical.
+// message and the same iss and outcome keys
+// (https://github.com/eshu-hq/eshu/blob/e974c50224/go/internal/oidcbearer/resolver.go#L252);
+// the edge adds method and path, so the lines are scraper-compatible, not
+// byte-identical.
 func TestMiddlewareDenialLogShape(t *testing.T) {
 	t.Parallel()
 
