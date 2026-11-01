@@ -253,6 +253,22 @@ jobs:
           { printf '%s\n' '${{ steps.meta-tag.outputs.labels }}'; printf '%s\n' '${{ steps.meta-branch.outputs.labels }}'; } > /tmp/labels.txt
           sed -i "s|org\\.opencontainers\\.image\\.created=.*|org.opencontainers.image.created=${CREATED}|" /tmp/labels.txt
           { echo 'labels<<EOF'; cat /tmp/labels.txt; echo 'EOF'; } >> "${GITHUB_OUTPUT}"
+      - name: Re-check newest tag before publishing
+        # build-and-scan can run for many minutes before this job starts, and
+        # a newer tag may have been released in that gap. Re-check right
+        # before the step that writes the floating X.Y and X tags (this also
+        # covers a re-run of just this job). Same rule as the first check.
+        if: github.event_name == 'workflow_dispatch' && github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet --tags --force origin
+          newest="$(git tag --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+          if [ "$newest" != "$TAG" ]; then
+            echo "::error::${TAG} is no longer the newest tag (${newest:-none}); not publishing floating tags" >&2
+            exit 1
+          fi
       - name: Build and push image
         id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6

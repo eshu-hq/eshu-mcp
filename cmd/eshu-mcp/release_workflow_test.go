@@ -435,3 +435,46 @@ func TestReleaseTagDispatchRefusesReplayAndOffMain(t *testing.T) {
 		}
 	}
 }
+
+// TestReleaseTagDispatchRechecksNewestTagBeforePush pins the second newest-
+// tag check: build-and-scan can run for many minutes before the push job
+// starts, and a newer tag may be released in that gap, so the push job
+// re-checks immediately before the step that writes the floating tags.
+func TestReleaseTagDispatchRechecksNewestTagBeforePush(t *testing.T) {
+	t.Parallel()
+
+	body := readWorkflow(t, "release.yml")
+	const anchor = "name: Re-check newest tag before publishing"
+	recheck := strings.Index(body, anchor)
+	if recheck < 0 {
+		t.Fatalf("no %q step: a newer tag released during the scan would be rolled back", anchor)
+	}
+	publish := strings.Index(body, "name: Build and push image")
+	if publish < 0 || recheck > publish {
+		t.Error("newest-tag re-check does not run before the step that pushes the image")
+	}
+	pushJob := strings.Index(body, "\n  push:\n    needs")
+	if recheck < pushJob {
+		t.Error("newest-tag re-check is not in the push job")
+	}
+	cond := ifAfter(t, body, anchor)
+	for _, tc := range []struct {
+		name                string
+		event, refType, ref string
+		want                bool
+	}{
+		{"tag dispatch", "workflow_dispatch", "tag", "refs/tags/v0.2.6", true},
+		{"tag push", "push", "tag", "refs/tags/v0.2.6", false},
+		{"main push", "push", "branch", "refs/heads/main", false},
+	} {
+		if got := evalCondition(t, cond, refCtx(tc.event, tc.refType, tc.ref)); got != tc.want {
+			t.Errorf("%s: re-check runs=%v, want %v", tc.name, got, tc.want)
+		}
+	}
+	step := body[recheck:publish]
+	for _, want := range []string{"git fetch --quiet --tags", `grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'`, "sort -V", `"$newest" != "$TAG"`, "exit 1"} {
+		if !strings.Contains(step, want) {
+			t.Errorf("newest-tag re-check lacks %q", want)
+		}
+	}
+}

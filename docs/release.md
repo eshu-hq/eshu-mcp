@@ -49,7 +49,10 @@ before the scan and push) when the tag already has a Release or its
 commit is not on `main`, or it is not the newest `vX.Y.Z` tag (strictly
 matched; pre-release tags are ignored). Recovery can therefore complete a
 missing release for the newest tag only: it never replays a published
-tag or moves the floating `X.Y` and `X` tags backward. `v0.2.6` is
+tag or moves the floating `X.Y` and `X` tags backward. The newest-tag
+check runs twice: first in `build-and-scan`, and again in `push` right
+before the image is pushed, because a newer tag can be released while
+the scan runs. `v0.2.6` is
 intentionally left unreleased and is superseded by the next patch tag;
 a superseded tag whose release failed is not recovered, the next patch
 carries the fix forward.
