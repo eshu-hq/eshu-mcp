@@ -14,6 +14,15 @@ import (
 // personal token, a file-registry token, and the shared key), so a 200 means
 // core admits the credential and a 401 or 403 means it does not. The profile
 // route is not used: it refuses subject-less credentials that core admits.
+//
+// Core sources this rests on, at eshu 9032fc3073:
+//   - the route is classed scopedRouteTenantDataFree, so a caller needs no
+//     repository grant:
+//     https://github.com/eshu-hq/eshu/blob/9032fc3073/go/internal/query/auth_scoped_routes_completeness.go#L109
+//   - a scoped token reaches it (TestAuthMiddlewareWithScopedTokensAllowsCapabilityCatalogRoute):
+//     https://github.com/eshu-hq/eshu/blob/9032fc3073/go/internal/query/auth_capabilities_test.go
+//   - the OpenAPI entry carries x-scoped-token-support:
+//     https://github.com/eshu-hq/eshu/blob/9032fc3073/go/internal/query/openapi/paths/catalog/capabilities.go
 const (
 	admissionProbePath  = "/api/v0/capabilities"
 	admissionProbeQuery = "limit=1"

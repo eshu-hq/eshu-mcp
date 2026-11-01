@@ -41,8 +41,9 @@ const (
 	// credential still costs core one request per window.
 	admissionNegativeTTL = 10 * time.Second
 	// admissionMaxEntries caps the cache so a flood of distinct credentials
-	// cannot grow it without limit. A full cache stops storing new entries
-	// until some expire; it never evicts a live decision.
+	// cannot grow it without limit. A full cache evicts the entry closest to
+	// expiry to make room, so a repeated credential still costs one probe per
+	// TTL.
 	admissionMaxEntries = 4096
 	// admissionProbeTimeout bounds one probe, well under the dispatch
 	// timeout, so a stalled core answers 503 quickly instead of hanging the
@@ -220,16 +221,33 @@ func (a *Admission) store(principal string, decision admissionDecision, ttl time
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if _, exists := a.cache[principal]; !exists && len(a.cache) >= a.maxEntries {
-		for key, entry := range a.cache {
-			if !now.Before(entry.expires) {
-				delete(a.cache, key)
-			}
-		}
-		if len(a.cache) >= a.maxEntries {
-			return
-		}
+		a.makeRoomLocked(now)
 	}
 	a.cache[principal] = admissionEntry{decision: decision, expires: now.Add(ttl)}
+}
+
+// makeRoomLocked frees one slot. It drops every expired entry, and when the
+// cache is still full of live decisions it evicts the one closest to expiry.
+// Storing the new decision (instead of skipping it) keeps the cost of a
+// repeated credential at one probe per TTL even under a flood of distinct
+// credentials: a flood can push valid entries out, but every flood request
+// already cost core one probe, so eviction adds no amplification. The scan is
+// O(maxEntries) and only runs on a miss, which already costs a core round trip.
+func (a *Admission) makeRoomLocked(now time.Time) {
+	var soonestKey string
+	var soonest time.Time
+	for key, entry := range a.cache {
+		if !now.Before(entry.expires) {
+			delete(a.cache, key)
+			continue
+		}
+		if soonestKey == "" || entry.expires.Before(soonest) {
+			soonestKey, soonest = key, entry.expires
+		}
+	}
+	if len(a.cache) >= a.maxEntries && soonestKey != "" {
+		delete(a.cache, soonestKey)
+	}
 }
 
 func (a *Admission) log(level slog.Level, msg string, args ...any) {

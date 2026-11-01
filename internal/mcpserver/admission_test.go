@@ -326,3 +326,41 @@ func TestAdmissionStatsCountEveryOutcome(t *testing.T) {
 		t.Fatalf("Stats() = %+v, want %+v", got, want)
 	}
 }
+
+// TestAdmissionFullCacheStillBoundsProbeCost proves a full cache keeps the
+// one-probe-per-TTL bound: a new credential evicts the entry closest to
+// expiry instead of going uncached, so a repeated credential never probes on
+// every request just because the cache filled up.
+func TestAdmissionFullCacheStillBoundsProbeCost(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	prober := &fakeProber{status: http.StatusUnauthorized}
+	admission := newTestAdmission(prober)
+	admission.now = func() time.Time { return now }
+	admission.maxEntries = 3
+	h := admissionServer(t, "", nil, admission)
+
+	for _, cred := range []string{"Bearer a", "Bearer b", "Bearer c"} {
+		do(h, http.MethodPost, "/mcp/message", rpc("ping"), cred)
+		now = now.Add(time.Second)
+	}
+	before := prober.callCount()
+	for range 5 {
+		do(h, http.MethodPost, "/mcp/message", rpc("ping"), "Bearer d")
+	}
+	if got := prober.callCount() - before; got != 1 {
+		t.Fatalf("5 repeats of a credential arriving at a full cache cost %d probes, want 1", got)
+	}
+	if got := admission.cacheLen(); got > 3 {
+		t.Fatalf("cache holds %d entries, want at most 3", got)
+	}
+	// The oldest entry was the one evicted; the newest two are still served
+	// from the cache.
+	before = prober.callCount()
+	do(h, http.MethodPost, "/mcp/message", rpc("ping"), "Bearer c")
+	do(h, http.MethodPost, "/mcp/message", rpc("ping"), "Bearer a")
+	if got := prober.callCount() - before; got != 1 {
+		t.Fatalf("revisiting c (cached) and a (evicted) cost %d probes, want exactly 1 for the evicted one", got)
+	}
+}
