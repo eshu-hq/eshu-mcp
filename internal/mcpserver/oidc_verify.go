@@ -130,8 +130,8 @@ func (v *TokenVerifier) Verify(authHeader string) VerifyResult {
 	credential := strings.TrimSpace(authHeader)
 	// RFC 7235 schemes are case-insensitive: a Bearer is recognized
 	// whatever its case. Only a dotted Bearer (a JWT attempt) is verified
-	// below; a genuinely different scheme, like a dotless Bearer, keeps the
-	// legacy pass-through to core.
+	// below; a genuinely different scheme, and likewise a dotless Bearer,
+	// keeps the legacy pass-through to core.
 	scheme, rest, _ := strings.Cut(credential, " ")
 	if !strings.EqualFold(scheme, "Bearer") {
 		sum := sha256.Sum256([]byte(credential))
