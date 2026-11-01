@@ -141,3 +141,57 @@ func TestRegisterSessionConcurrentNeverExceedsCap(t *testing.T) {
 		t.Errorf("count = %d, want %d", got, capPerPrincipal)
 	}
 }
+
+// TestCeilingAccountingSurvivesDoubleUnregister covers the process-wide
+// ceiling. It is derived from the live session map (there is no second
+// counter to drift), so a repeated or unknown unregister cannot underflow it;
+// the test pins that: after every unregister the total returns to zero, and
+// the ceiling then admits exactly its limit again.
+func TestCeilingAccountingSurvivesDoubleUnregister(t *testing.T) {
+	t.Parallel()
+
+	const ceiling = 3
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
+	s := NewServer(registry.Definitions(), nil, quiet, "t", "t",
+		WithMaxSSESessionsPerPrincipal(10), WithMaxSSESessions(ceiling))
+
+	var ids []string
+	for i := range ceiling {
+		ids = append(ids, registerN(t, s, fmt.Sprintf("p%d", i), fmt.Sprintf("c%d", i), 1)...)
+	}
+	if got := s.registerSession("over", &sseSession{principal: "p9"}); got != sseAdmitCeiling {
+		t.Fatalf("register at the ceiling = %v, want the ceiling refusal", got)
+	}
+
+	s.unregisterSession(ids[0])
+	s.unregisterSession(ids[0])
+	s.unregisterSession("never-set")
+	if got := s.SSEStats().Active; got != ceiling-1 {
+		t.Fatalf("Active after a double unregister = %d, want %d", got, ceiling-1)
+	}
+	if got := s.registerSession("one", &sseSession{principal: "p9"}); got != sseAdmitted {
+		t.Fatalf("register after one freed slot = %v, want admitted", got)
+	}
+	if got := s.registerSession("two", &sseSession{principal: "p9"}); got != sseAdmitCeiling {
+		t.Fatalf("second register after one freed slot = %v, want the ceiling refusal", got)
+	}
+
+	for _, id := range append(ids[1:], "one") {
+		s.unregisterSession(id)
+		s.unregisterSession(id)
+	}
+	if got := s.SSEStats().Active; got != 0 {
+		t.Fatalf("Active after unregistering everything twice = %d, want 0", got)
+	}
+	if len(s.sseLimit.perPrincipal) != 0 {
+		t.Errorf("perPrincipal not empty: %v", s.sseLimit.perPrincipal)
+	}
+	for i := range ceiling {
+		if got := s.registerSession(fmt.Sprintf("r%d", i), &sseSession{principal: "q"}); got != sseAdmitted {
+			t.Fatalf("re-register %d = %v, want admitted after the books returned to zero", i, got)
+		}
+	}
+	if got := s.registerSession("r-over", &sseSession{principal: "q"}); got != sseAdmitCeiling {
+		t.Errorf("ceiling after the round trip is not exactly %d: %v", ceiling, got)
+	}
+}
