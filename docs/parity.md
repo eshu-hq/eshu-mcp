@@ -68,7 +68,9 @@ The edge door check classifies credentials by shape and does not admit them.
   decision, while the probe forwards the caller's header verbatim. A spelling
   core would treat differently could therefore ride a sibling spelling's cached
   decision for up to the TTL. The fold follows core's bearer parsing
-  (`go/internal/query/auth.go`: first space, `TrimSpace` on both parts), and a
+  (`go/internal/query/auth.go`: first space, `TrimSpace` on both parts) except
+  that the edge trims the whole header first (see the leading-whitespace note
+  under the forwarded-principal bullet), and a
   caller must already hold the secret; core's tolerance for other variants
   beyond that parser is unverified.
 - Operator constraint: core treats exactly three non-empty dot-separated
@@ -117,8 +119,14 @@ it; a malformed or non-positive value fails the boot).
   principal and one allowance. The cut matches core's bearer parsing (first
   space, then `strings.TrimSpace` on scheme and secret), so whitespace glued to
   the scheme (`Bearer\t x`) folds too; a separator-free form core refuses
-  (`Bearer\tx`) never passes admission. The secret stays case-sensitive. The shared key
-  is matched with the same case-insensitive scheme on both paths.
+  (`Bearer\tx`) never passes admission. The secret stays case-sensitive. The
+  shared key is matched with the same case-insensitive scheme on both paths.
+  One difference from core: the edge trims the whole header before cutting,
+  while core cuts the raw header. A header with leading non-ASCII whitespace,
+  such as an NBSP followed by a space before the scheme, can therefore be keyed
+  as the same principal as its trimmed sibling. The caller must already hold
+  the secret, core still refuses that spelling on dispatch, and the process
+  ceiling bounds the effect.
 - A process-wide ceiling (default 2048, `ESHU_MCP_MAX_SSE_SESSIONS_TOTAL`)
   backs the per-principal cap for what it cannot see: many distinct valid
   credentials, or a spelling the edge keys differently from core. Over the
