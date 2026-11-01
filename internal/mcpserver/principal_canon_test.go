@@ -164,3 +164,44 @@ func TestSchemeTrimmedLikeCore(t *testing.T) {
 		t.Error("a tab-only form, which core refuses, was folded into the Bearer principal")
 	}
 }
+
+// TestSharedKeySecretIsCaseSensitive pins that only the scheme is
+// case-insensitive: a wrong-case key must not resolve to the shared
+// principal, on either auth path. It becomes a forwarded principal that core
+// then judges.
+func TestSharedKeySecretIsCaseSensitive(t *testing.T) {
+	t.Parallel()
+
+	verifier := NewTokenVerifier("", nil, "deploy-key")
+	for _, header := range []string{"Bearer DEPLOY-KEY", "bearer Deploy-Key", "Bearer deploy-KEY"} {
+		edge, _ := edgeAuth("deploy-key", header)
+		if edge == "shared" || !strings.HasPrefix(edge, "fwd:") {
+			t.Errorf("edgeAuth(%q) = %q, want a fwd: principal (secret is case-sensitive)", header, edge)
+		}
+		if got := verifier.Verify(header).Principal; got == "shared" || !strings.HasPrefix(got, "fwd:") {
+			t.Errorf("Verify(%q) = %q, want a fwd: principal (secret is case-sensitive)", header, got)
+		}
+	}
+	if !matchesSharedKey("deploy-key", "BEARER deploy-key") {
+		t.Error("scheme case must stay insensitive in the shared-key match")
+	}
+}
+
+// TestSeparatorFreeTabFormIsNotFoldedIntoBearer pins why the cut is on the
+// first SPACE only. Core (go/internal/query/auth.go) refuses "Bearer<TAB>x"
+// because it finds no space, so folding that form into the "Bearer x"
+// principal would let a header core rejects ride the cached admit decision of
+// a sibling spelling core accepts.
+func TestSeparatorFreeTabFormIsNotFoldedIntoBearer(t *testing.T) {
+	t.Parallel()
+
+	good, _ := edgeAuth("deploy-key", "Bearer opaque-token")
+	for _, header := range []string{"Bearer\topaque-token", "bearer\t\topaque-token"} {
+		if got, _ := edgeAuth("deploy-key", header); got == good {
+			t.Errorf("edgeAuth(%q) folded into the Bearer principal; core refuses this form", header)
+		}
+		if matchesSharedKey("opaque-token", header) {
+			t.Errorf("matchesSharedKey accepted %q; core refuses this form", header)
+		}
+	}
+}

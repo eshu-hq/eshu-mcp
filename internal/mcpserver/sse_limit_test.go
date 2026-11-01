@@ -314,3 +314,67 @@ func TestSSESessionCapDefaultsAndInvalidValues(t *testing.T) {
 		}
 	}
 }
+
+// TestSSERefusalBodyIsNeutralAndLogNamesTheBound proves both refusals answer
+// the same neutral body, and each logs its own bounded outcome: the ceiling
+// refusal must not read as a per-credential problem.
+func TestSSERefusalBodyIsNeutralAndLogNamesTheBound(t *testing.T) {
+	t.Parallel()
+
+	const wantMessage = "too many open sessions; close one or retry shortly"
+	cases := []struct {
+		name        string
+		opts        []ServerOption
+		first       []string
+		refused     string
+		wantOutcome string
+		banned      string
+	}{
+		{
+			"per-principal cap",
+			[]ServerOption{WithMaxSSESessionsPerPrincipal(1)},
+			[]string{"Bearer p-1"},
+			"Bearer p-1", "sse_session_cap_reached", "sse_session_ceiling_reached",
+		},
+		{
+			"process ceiling",
+			[]ServerOption{WithMaxSSESessionsPerPrincipal(10), WithMaxSSESessions(1)},
+			[]string{"Bearer p-1"},
+			"Bearer p-2", "sse_session_ceiling_reached", "sse_session_cap_reached",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			logs := &lockedBuffer{}
+			logger := slog.New(slog.NewJSONHandler(logs, nil))
+			noDispatch := func(context.Context, string, map[string]any, string) (any, error) { return nil, nil }
+			mcp := NewServer(registry.Definitions(), noDispatch, logger, "t", "t",
+				append([]ServerOption{WithTransportAuth(EdgeAuthMiddleware("", logger))}, tc.opts...)...)
+			h := mcp.Handler(nil)
+
+			for _, auth := range tc.first {
+				if !openSSE(t, h, auth).admitted() {
+					t.Fatalf("setup session %q refused", auth)
+				}
+			}
+			refused := openSSE(t, h, tc.refused)
+			if refused.status() != http.StatusTooManyRequests {
+				t.Fatalf("status = %d, want 429", refused.status())
+			}
+			var resp jsonrpcResponse
+			if err := json.Unmarshal([]byte(refused.body()), &resp); err != nil || resp.Error == nil {
+				t.Fatalf("decode body %q: %v", refused.body(), err)
+			}
+			if resp.Error.Message != wantMessage {
+				t.Errorf("message = %q, want the neutral %q", resp.Error.Message, wantMessage)
+			}
+			if out := logs.String(); !strings.Contains(out, tc.wantOutcome) || strings.Contains(out, tc.banned) {
+				t.Errorf("log = %s\nwant outcome %q and not %q", out, tc.wantOutcome, tc.banned)
+			}
+			if got := mcp.SSEStats().Rejected; got != 1 {
+				t.Errorf("Rejected = %d, want 1 (counts both bounds)", got)
+			}
+		})
+	}
+}

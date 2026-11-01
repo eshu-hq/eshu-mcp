@@ -190,6 +190,6 @@ func (s *Server) refuseSessionOverLimit(w http.ResponseWriter, why sseAdmission)
 	w.Header().Set("Retry-After", strconv.Itoa(sseSessionLimitRetryAfterSeconds))
 	writeJSON(w, http.StatusTooManyRequests, jsonrpcResponse{
 		JSONRPC: "2.0",
-		Error:   &jsonrpcError{Code: sseSessionLimitErrorCode, Message: "too many open sessions for this credential; close one or retry shortly"},
+		Error:   &jsonrpcError{Code: sseSessionLimitErrorCode, Message: "too many open sessions; close one or retry shortly"},
 	})
 }

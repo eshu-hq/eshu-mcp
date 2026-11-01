@@ -63,6 +63,14 @@ The edge door check classifies credentials by shape and does not admit them.
   probe.
 - `/healthz` reports `admission` counters (`admitted`, `denied`, `unavailable`,
   `cache_hit`) so an operator can tell a core outage from a denial storm.
+- The admission-cache key is the canonical principal, so spellings that fold
+  (scheme case, whitespace around the scheme and secret) share one cached
+  decision, while the probe forwards the caller's header verbatim. A spelling
+  core would treat differently could therefore ride a sibling spelling's cached
+  decision for up to the TTL. The fold follows core's bearer parsing
+  (`go/internal/query/auth.go`: first space, `TrimSpace` on both parts), and a
+  caller must already hold the secret; core's tolerance for other variants
+  beyond that parser is unverified.
 - Operator constraint: core treats exactly three non-empty dot-separated
   segments as a JWT; any other shape falls through to its token registries.
   The edge treats any dotted Bearer as a JWT attempt. A token in
@@ -114,7 +122,8 @@ it; a malformed or non-positive value fails the boot).
 - A process-wide ceiling (default 2048, `ESHU_MCP_MAX_SSE_SESSIONS_TOTAL`)
   backs the per-principal cap for what it cannot see: many distinct valid
   credentials, or a spelling the edge keys differently from core. Over the
-  ceiling the answer is the same 429, logged as `sse_session_ceiling_reached`.
+  ceiling the answer is the same 429 with the same neutral body (`too many open
+  sessions; close one or retry shortly`).
 - With transport auth off (the loopback escape hatch) every session has an
   empty principal and shares one anonymous allowance, so that mode is bounded
   too.
@@ -131,8 +140,10 @@ it; a malformed or non-positive value fails the boot).
   raise the cap (`ESHU_MCP_MAX_SSE_SESSIONS_PER_PRINCIPAL`) above their
   expected concurrent clients plus reconnect overlap.
 - `/healthz` reports `sse.active` (live sessions) and `sse.rejected`
-  (refusals since start). The refusal log line carries `outcome`
-  `sse_session_cap_reached` and the cap, never the principal.
+  (refusals since start, both bounds counted together). The refusal log line
+  carries `outcome` `sse_session_cap_reached` (principal at its cap) or
+  `sse_session_ceiling_reached` (process ceiling) and the limit, never the
+  principal.
 
 ## NOT_CHECKED
 
