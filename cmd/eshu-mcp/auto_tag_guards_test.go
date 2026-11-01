@@ -21,9 +21,15 @@ func TestAutoTagDispatchScriptRuns(t *testing.T) {
 	t.Parallel()
 	script := stepScripts(t, readWorkflow(t, "auto-tag.yml"), "Dispatch release for the new tag")[0]
 	now := time.Now()
+	// Production tags the merge commit with an annotated tag and the job's
+	// HEAD is the pull_request merge ref, so HEAD is neither the tag object
+	// nor the tagged commit: leave HEAD on a later commit.
 	setup := func() (*sandbox, string) {
 		s := newSandbox(t)
-		return s, s.seed("v0.2.6")["v0.2.6"]
+		tagged := s.commit("main")
+		s.annotatedTag("v0.2.6", tagged)
+		s.commit("main")
+		return s, tagged
 	}
 	// env: runs before the dispatch, and the runs visible once it has been
 	// accepted (the dispatched run appearing, or not).
@@ -74,4 +80,24 @@ func TestAutoTagDispatchScriptRuns(t *testing.T) {
 	s, sha = setup()
 	got = s.exec(script, env(none, runsJSON(sha, "v0.2.6", "workflow_dispatch", now.Add(-time.Hour)))...)
 	check(t, "stale run (created before the dispatch)", got, 1, "no release run appeared")
+}
+
+// TestAutoTagWorkflowPinsSettings pins settings whose mutation changes no
+// script: token scopes, serialization, and the full-history checkout the
+// tag computation needs.
+func TestAutoTagWorkflowPinsSettings(t *testing.T) {
+	t.Parallel()
+	body := readWorkflow(t, "auto-tag.yml")
+	for _, want := range []string{
+		"\npermissions:\n  contents: read\n\nconcurrency:\n  group: auto-tag\n  cancel-in-progress: false\n",
+		"          fetch-depth: 0\n",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("auto-tag.yml lost the pinned setting:\n%s", want)
+		}
+	}
+	got := jobPermissions(t, body, "tag-patch")
+	if strings.Join(got, "|") != "contents: write|actions: write" {
+		t.Errorf("tag-patch permissions = %v, want [contents: write actions: write]", got)
+	}
 }

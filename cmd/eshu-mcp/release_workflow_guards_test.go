@@ -28,6 +28,7 @@ func TestReleaseValidateStampScriptsRun(t *testing.T) {
 	}{
 		{"tag push strict", "push", "tag", "v0.2.6", 0, ""},
 		{"tag push pre-release unchanged", "push", "tag", "v0.3.0-rc.1", 0, ""},
+		{"tag push non-semver v1.0 unchanged", "push", "tag", "v1.0", 0, ""},
 		{"tag push unsafe", "push", "tag", "v1;rm -rf", 1, "unsafe VERSION"},
 		{"main push sha", "push", "branch", "0123abcd", 0, ""},
 		{"dispatch strict", "workflow_dispatch", "tag", "v0.2.6", 0, ""},
@@ -67,11 +68,13 @@ func TestReleaseReplayGuardScriptRuns(t *testing.T) {
 		got := s.exec(script, guardEnv("v0.2.6", sh["v0.2.6"], "STUB_RELEASE=exists")...)
 		check(t, "exists", got, 1, "already exists")
 	})
-	t.Run("Release lookup error fails closed", func(t *testing.T) {
-		s := newSandbox(t)
-		sh := s.seed("v0.2.6")
-		got := s.exec(script, guardEnv("v0.2.6", sh["v0.2.6"], "STUB_RELEASE=500")...)
-		check(t, "500", got, 1, "cannot tell whether v0.2.6 is released")
+	t.Run("only an explicit 404 means unreleased", func(t *testing.T) {
+		for _, code := range []string{"500", "403", "429", "400"} {
+			s := newSandbox(t)
+			sh := s.seed("v0.2.6")
+			got := s.exec(script, guardEnv("v0.2.6", sh["v0.2.6"], "STUB_RELEASE="+code)...)
+			check(t, "HTTP "+code, got, 1, "cannot tell whether v0.2.6 is released")
+		}
 	})
 	t.Run("tag commit off main is refused", func(t *testing.T) {
 		s := newSandbox(t)
@@ -133,6 +136,11 @@ func TestReleaseRecheckScriptRuns(t *testing.T) {
 	check(t, "newest", s.exec(script, "TAG=v0.2.6"), 0, "")
 	check(t, "superseded", s.exec(script, "TAG=v0.2.5"), 1, "no longer the newest tag (v0.2.6)")
 
+	ord := newSandbox(t)
+	ord.seed("v0.2.9", "v0.2.10")
+	check(t, "numeric order: 10 is newest", ord.exec(script, "TAG=v0.2.10"), 0, "")
+	check(t, "numeric order: 9 superseded", ord.exec(script, "TAG=v0.2.9"), 1, "no longer the newest tag (v0.2.10)")
+
 	rc := newSandbox(t)
 	rc.seed("v0.3.0-rc1")
 	check(t, "no strict tag", rc.exec(script, "TAG=v0.3.0-rc1"), 1, "no longer the newest tag (none)")
@@ -158,6 +166,7 @@ func TestReleaseVerifyPublishedScriptRuns(t *testing.T) {
 	const image = "ghcr.io/eshu-hq/eshu-mcp"
 	manifest := `{"digest":"pushed"}`
 	digest := sha(manifest)
+	const fullSHA = "0123456789abcdef0123456789abcdef01234567"
 	setup := func(tag string, tags map[string]string) (*sandbox, []string) {
 		s := newSandbox(t)
 		for name, content := range tags {
@@ -167,7 +176,7 @@ func TestReleaseVerifyPublishedScriptRuns(t *testing.T) {
 			}
 		}
 		return s, []string{
-			"TAG=" + tag, "DIGEST=" + digest, "IMAGE=" + image,
+			"TAG=" + tag, "DIGEST=" + digest, "IMAGE=" + image, "GITHUB_SHA=" + fullSHA,
 			"STUB_BODY=Image: " + image + "@" + digest, "STUB_ASSETS=other.txt\neshu-mcp-image-spdx.json",
 		}
 	}
@@ -201,6 +210,54 @@ func TestReleaseVerifyPublishedScriptRuns(t *testing.T) {
 	got := s.exec(script, env...)
 	check(t, "pre-release skips moving tags", got, 0, "::notice::")
 
+	// A human push of v1.0 matches v[0-9]* but is not valid semver:
+	// metadata-action emits only sha-<full>, so that is what must resolve.
+	s, env = setup("v1.0", map[string]string{"sha-" + fullSHA: manifest})
+	check(t, "non-semver tag verifies the sha tag", s.exec(script, env...), 0, "::notice::")
+
+	// Matches the strict vX.Y.Z shape but is not valid semver (leading
+	// zero): no :X.Y or :X tags exist, so they must not be required.
+	s, env = setup("v01.2.3", map[string]string{"sha-" + fullSHA: manifest})
+	check(t, "strict-shaped non-semver tag skips moving tags", s.exec(script, env...), 0, "::notice::")
+
+	s, env = setup("v1.0", map[string]string{"1.0": manifest})
+	check(t, "non-semver tag: :1.0 is not what is published", s.exec(script, env...), 1, "")
+
+	s, env = setup("v1.0", map[string]string{"sha-" + fullSHA: `{"digest":"other"}`})
+	check(t, "non-semver tag: sha tag digest mismatch", s.exec(script, env...), 1, "want "+digest)
+
 	s, env = setup("v0.3.0-rc.1", map[string]string{"0.3.0-rc.1": `{"digest":"other"}`})
 	check(t, "pre-release digest still checked", s.exec(script, env...), 1, "want "+digest)
+}
+
+// TestReleaseWorkflowPinsGateSettings pins the settings whose mutation would
+// not change any script: serialization, scan severity, token scopes, and the
+// full-history checkouts the ancestry and tag checks need.
+func TestReleaseWorkflowPinsGateSettings(t *testing.T) {
+	t.Parallel()
+	body := relBody(t)
+	for _, want := range []string{
+		"\npermissions:\n  contents: read\n\nconcurrency:\n  group: image-publish-${{ github.ref }}\n  cancel-in-progress: false\n",
+		"          severity: HIGH,CRITICAL\n          exit-code: \"1\"\n",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("release.yml lost the pinned setting:\n%s", want)
+		}
+	}
+	wantPerms := map[string][]string{
+		"build-and-scan":   {"contents: read"},
+		"push":             {"contents: read", "packages: write", "id-token: write", "attestations: write"},
+		"github-release":   {"contents: write", "packages: read"},
+		"verify-published": {"contents: read", "packages: read"},
+	}
+	for job, want := range wantPerms {
+		if got := jobPermissions(t, body, job); strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("job %s permissions = %v, want %v", job, got, want)
+		}
+	}
+	for _, job := range []string{"build-and-scan", "push"} {
+		if !strings.Contains(jobBlock(t, body, job), "          fetch-depth: 0\n") {
+			t.Errorf("job %s checkout lost fetch-depth: 0: the ancestry and tag checks need full history", job)
+		}
+	}
 }

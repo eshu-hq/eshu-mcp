@@ -379,16 +379,29 @@ jobs:
           # pullable X.Y.Z image at the pushed digest and a Release that
           # records it. Anything else fails here, loudly.
           ver="${TAG#v}"
-          # X.Y.Z (the v is stripped by metadata-action's semver pattern) is
-          # immutable per release: it must equal the pushed digest.
-          got="sha256:$(docker buildx imagetools inspect --raw "${IMAGE}:${ver}" | sha256sum | cut -d' ' -f1)"
+          semver_re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          strict_re='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          # metadata-action's semver patterns emit tags only for valid
+          # semver (and drop the v). A human push of v1.0 matches v[0-9]*
+          # and still publishes, but only as sha-<full>, so verify that
+          # tag instead of a :1.0 that does not exist.
+          if printf '%s' "$TAG" | grep -Eq "$semver_re"; then
+            want_tag="$ver"
+          else
+            echo "::notice::${TAG} is not valid semver; only the sha tag is published, verifying that"
+            want_tag="sha-${GITHUB_SHA}"
+          fi
+          # The verified tag is immutable per release: it must equal the
+          # pushed digest.
+          got="sha256:$(docker buildx imagetools inspect --raw "${IMAGE}:${want_tag}" | sha256sum | cut -d' ' -f1)"
           if [ "$got" != "$DIGEST" ]; then
-            echo "::error::${IMAGE}:${ver} is ${got}, want ${DIGEST}" >&2
+            echo "::error::${IMAGE}:${want_tag} is ${got}, want ${DIGEST}" >&2
             exit 1
           fi
           # X.Y and X move with later patches: they must only resolve. A
-          # pre-release tag (human tag push only) is not assumed to publish them.
-          if printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+          # pre-release or non-semver tag (human tag push only) is not
+          # assumed to publish them.
+          if [ "$want_tag" = "$ver" ] && printf '%s' "$TAG" | grep -Eq "$strict_re"; then
             major="${ver%%.*}"
             rest="${ver#*.}"
             minor="${rest%%.*}"

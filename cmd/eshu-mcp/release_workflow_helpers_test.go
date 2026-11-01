@@ -71,6 +71,7 @@ api)
   case "${STUB_RELEASE:-404}" in
     exists) echo "https://github.com/o/r/releases/tag/t"; exit 0 ;;
     404) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
+    [0-9]*) echo "gh: error (HTTP $STUB_RELEASE)" >&2; exit 1 ;;
     *) echo "gh: Internal Server Error (HTTP 500)" >&2; exit 1 ;;
   esac ;;
 release)
@@ -110,6 +111,9 @@ type sandbox struct {
 
 func newSandbox(t *testing.T) *sandbox {
 	t.Helper()
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Fatalf("jq is required: the stub gh evaluates --jq expressions with it: %v", err)
+	}
 	root := t.TempDir()
 	s := &sandbox{
 		t: t, root: root, work: filepath.Join(root, "work"),
@@ -156,6 +160,13 @@ func (s *sandbox) commit(branch string) string {
 
 func (s *sandbox) tag(name, sha string) {
 	s.run(s.work, "git", "tag", name, sha)
+	s.run(s.work, "git", "push", "-q", "origin", name)
+}
+
+// annotatedTag is tag for an annotated tag object, which is what auto-tag
+// pushes (`git tag -a`): its object id is not the commit id.
+func (s *sandbox) annotatedTag(name, sha string) {
+	s.run(s.work, "git", "tag", "-a", "-m", "m", name, sha)
 	s.run(s.work, "git", "push", "-q", "origin", name)
 }
 
@@ -223,3 +234,45 @@ func check(t *testing.T, name string, got result, wantRC int, want string) {
 }
 
 func relBody(t *testing.T) string { return readWorkflow(t, "release.yml") }
+
+// jobBlock returns the text of one top-level job in a workflow file.
+func jobBlock(t *testing.T, body, job string) string {
+	t.Helper()
+	jobsAt := strings.Index(body, "\njobs:\n") // `on: push:` also matches "  push:"
+	start := strings.Index(body[jobsAt:], "\n  "+job+":\n")
+	if jobsAt < 0 || start < 0 {
+		t.Fatalf("no job %q", job)
+	}
+	lines := strings.Split(body[jobsAt+start+1:], "\n")
+	out := []string{lines[0]}
+	for _, l := range lines[1:] {
+		if strings.HasPrefix(l, "  ") && len(l) > 2 && l[2] != ' ' && l[2] != '#' {
+			break // next job key
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
+}
+
+// jobPermissions returns the job-level permissions entries, comments
+// stripped, in file order.
+func jobPermissions(t *testing.T, body, job string) []string {
+	t.Helper()
+	var perms []string
+	in := false
+	for _, l := range strings.Split(jobBlock(t, body, job), "\n") {
+		switch {
+		case l == "    permissions:":
+			in = true
+		case in && strings.HasPrefix(l, "      "):
+			entry, _, _ := strings.Cut(strings.TrimSpace(l), " #")
+			perms = append(perms, entry)
+		case in:
+			return perms
+		}
+	}
+	if !in {
+		t.Fatalf("job %q has no job-level permissions block", job)
+	}
+	return perms
+}

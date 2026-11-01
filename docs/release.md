@@ -38,8 +38,11 @@ Both routes publish the same image: a human `v[0-9]*` tag push (the
 original trigger, unchanged) and the `auto-tag` dispatch. A human push
 keeps the permissive tag check, so a pre-release tag such as
 `v0.3.0-rc.1` still publishes (`verify-published` skips the moving
-`X.Y` and `X` checks for it). A dispatch must name a strict `vX.Y.Z`
-tag.
+`X.Y` and `X` checks for it). A tag that matches `v[0-9]*` but is not
+valid semver, such as `v1.0`, publishes only `sha-<full>` (the semver
+tag patterns emit nothing for it), so `verify-published` checks that
+tag against the pushed digest instead of `:X.Y.Z`. A dispatch must name
+a strict `vX.Y.Z` tag.
 
 ## Recovery
 
@@ -89,11 +92,16 @@ resolves to the pushed digest, the moving `X.Y` and `X` tags resolve
 SBOM. `auto-tag` fails if the dispatch errors or no release run appears
 within about a minute, so a bare tag is never a silent outcome.
 
-The first live run must confirm two assumptions the local tests
-stub: that a dispatched run reports the tag commit as `headSha` (the
-`auto-tag` poll matches on it) and that `gh run list --branch <tag>`
-matches runs whose `head_branch` is the tag name (the duplicate-run
-check uses it).
+The first live run must confirm what the local tests stub:
+
+- the dispatch API accepts `ref=refs/tags/...`;
+- a dispatched run on an annotated tag reports the tag commit as
+  `headSha` (the `auto-tag` poll matches on it) and the tag name as
+  `head_branch` (the duplicate-run check uses `--branch`);
+- the full-history checkout (`fetch-depth: 0`) is enough for the
+  ancestor check against `origin/main` and for the tag list;
+- GHCR returns the manifest bytes `docker buildx imagetools inspect
+  --raw` hashes in `verify-published`.
 
 Watch the `release` run on the tag: `build-and-scan`, then `push`,
 then `github-release`. The release body records the pushed digest;
