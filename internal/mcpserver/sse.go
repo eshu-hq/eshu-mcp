@@ -152,8 +152,8 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	// Insert the session and take the principal's slot in one critical section
 	// (sse_limit.go): a principal at its cap is refused before any stream
 	// header is written, so the client gets a plain 429, not a dead stream.
-	if !s.registerSession(sessionID, sess) {
-		s.refuseSessionOverLimit(w)
+	if why := s.registerSession(sessionID, sess); why != sseAdmitted {
+		s.refuseSessionOverLimit(w, why)
 		return
 	}
 

@@ -133,8 +133,7 @@ func (v *TokenVerifier) Verify(authHeader string) VerifyResult {
 	// keeps the legacy pass-through to core.
 	scheme, rest, _ := strings.Cut(credential, " ")
 	if !strings.EqualFold(scheme, "Bearer") {
-		sum := sha256.Sum256([]byte(credential))
-		return VerifyResult{Principal: "fwd:" + hex.EncodeToString(sum[:])}
+		return VerifyResult{Principal: forwardedPrincipal(credential)}
 	}
 	raw := strings.TrimSpace(rest)
 	const prefix = "Bearer "
@@ -149,8 +148,7 @@ func (v *TokenVerifier) Verify(authHeader string) VerifyResult {
 	// (present scheme, absent credential) stays malformed: it is broken,
 	// not opaque.
 	if raw != "" && isOpaqueCredential(raw) {
-		sum := sha256.Sum256([]byte(credential))
-		return VerifyResult{Principal: "fwd:" + hex.EncodeToString(sum[:])}
+		return VerifyResult{Principal: forwardedPrincipal(credential)}
 	}
 	kind, outcome, iss := classifyToken(raw, v.resource, v.issuers)
 	if kind != DenyNone {

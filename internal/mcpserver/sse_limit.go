@@ -21,6 +21,10 @@ package mcpserver
 //     bucket, so the escape hatch is bounded too instead of being an
 //     unbounded mint.
 //
+// Forwarded principals are canonical (principal.go): scheme case and spacing
+// do not split one credential into several allowances. A process-wide ceiling
+// backs the per-principal cap for the cases it cannot see.
+//
 // The slot is taken inside the same sessMu critical section that inserts the
 // session and returned in the same critical section that removes it, so there
 // is no check-then-insert window and no path that inserts without counting.
@@ -45,6 +49,14 @@ const (
 	// when a stale connection is torn down, which is not instant, so the hint is
 	// longer than the admission 503's one second.
 	sseSessionLimitRetryAfterSeconds = 5
+
+	// defaultMaxSSESessionsTotal is the process-wide ceiling, a backstop for
+	// what a per-principal cap cannot see: many distinct credentials, or a gap
+	// between how the edge keys a credential and how core does. A session costs
+	// a goroutine, a 64-slot channel, and a connection (tens of KiB), so 2048
+	// holds the worst case near 100 MiB while leaving 64 principals at the
+	// per-principal default.
+	defaultMaxSSESessionsTotal = 2048
 
 	// sseSessionLimitErrorCode is the JSON-RPC error code for a refused session.
 	// It sits next to -32001 (session owner mismatch) in the implementation-
@@ -71,6 +83,23 @@ func WithMaxSSESessionsPerPrincipal(limit int) ServerOption {
 	}
 }
 
+// WithMaxSSESessions caps concurrent SSE sessions across all principals. A
+// value below one keeps the default, so a misconfigured zero cannot disable
+// the backstop.
+func WithMaxSSESessions(limit int) ServerOption {
+	return func(s *Server) {
+		s.sseMaxTotal = limit
+	}
+}
+
+// maxSSETotal returns the effective process-wide ceiling.
+func (s *Server) maxSSETotal() int {
+	if s.sseMaxTotal < 1 {
+		return defaultMaxSSESessionsTotal
+	}
+	return s.sseMaxTotal
+}
+
 // maxSSEPerPrincipal returns the effective per-principal cap.
 func (s *Server) maxSSEPerPrincipal() int {
 	if s.sseMaxPerPrincipal < 1 {
@@ -95,22 +124,36 @@ type sseLimiter struct {
 	rejected     atomic.Int64
 }
 
-// registerSession inserts sess under id unless its principal is at the cap.
-// It reports whether the session was registered. The cap check and the insert
+// sseAdmission is the outcome of a registerSession attempt.
+type sseAdmission int
+
+const (
+	sseAdmitted sseAdmission = iota
+	// sseAdmitPrincipalCap means the principal already holds its allowance.
+	sseAdmitPrincipalCap
+	// sseAdmitCeiling means the process-wide ceiling is reached.
+	sseAdmitCeiling
+)
+
+// registerSession inserts sess under id unless the process ceiling or the
+// principal's cap is reached, and reports which. The checks and the insert
 // share one sessMu critical section.
-func (s *Server) registerSession(id string, sess *sseSession) bool {
-	limit := s.maxSSEPerPrincipal()
+func (s *Server) registerSession(id string, sess *sseSession) sseAdmission {
+	limit, ceiling := s.maxSSEPerPrincipal(), s.maxSSETotal()
 	s.sessMu.Lock()
 	defer s.sessMu.Unlock()
+	if len(s.sessions) >= ceiling {
+		return sseAdmitCeiling
+	}
 	if s.sseLimit.perPrincipal[sess.principal] >= limit {
-		return false
+		return sseAdmitPrincipalCap
 	}
 	if s.sseLimit.perPrincipal == nil {
 		s.sseLimit.perPrincipal = make(map[string]int)
 	}
 	s.sseLimit.perPrincipal[sess.principal]++
 	s.sessions[id] = sess
-	return true
+	return sseAdmitted
 }
 
 // unregisterSession removes the session and returns its slot. It is safe to
@@ -135,10 +178,15 @@ func (s *Server) unregisterSession(id string) {
 // a Retry-After hint and a JSON-RPC error in the same shape as the other
 // handleSSE refusals. The log line carries only bounded fields: the principal
 // is a credential hash and is never logged.
-func (s *Server) refuseSessionOverLimit(w http.ResponseWriter) {
+func (s *Server) refuseSessionOverLimit(w http.ResponseWriter, why sseAdmission) {
 	s.sseLimit.rejected.Add(1)
-	s.logger.Warn("sse session refused: principal at session cap",
-		"outcome", "sse_session_cap_reached", "limit", s.maxSSEPerPrincipal())
+	if why == sseAdmitCeiling {
+		s.logger.Warn("sse session refused: process session ceiling reached",
+			"outcome", "sse_session_ceiling_reached", "limit", s.maxSSETotal())
+	} else {
+		s.logger.Warn("sse session refused: principal at session cap",
+			"outcome", "sse_session_cap_reached", "limit", s.maxSSEPerPrincipal())
+	}
 	w.Header().Set("Retry-After", strconv.Itoa(sseSessionLimitRetryAfterSeconds))
 	writeJSON(w, http.StatusTooManyRequests, jsonrpcResponse{
 		JSONRPC: "2.0",

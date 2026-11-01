@@ -100,6 +100,15 @@ it; a malformed or non-positive value fails the boot).
   `POST /mcp/message` mismatch check: an opaque credential hash, or `shared`
   for the deployment key. The shared key is one principal, so every caller
   behind it shares one allowance; raise the cap for a team on a shared key.
+- Forwarded principals are canonical: the scheme is lowercased and the secret's
+  surrounding whitespace dropped before hashing, on both the verifier and
+  no-verifier paths, so `Bearer x`, `bearer x`, and `Bearer  x` are one
+  principal and one allowance. The secret stays case-sensitive. The shared key
+  is matched with the same case-insensitive scheme on both paths.
+- A process-wide ceiling (default 2048, `ESHU_MCP_MAX_SSE_SESSIONS_TOTAL`)
+  backs the per-principal cap for what it cannot see: many distinct valid
+  credentials, or a spelling the edge keys differently from core. Over the
+  ceiling the answer is the same 429, logged as `sse_session_ceiling_reached`.
 - With transport auth off (the loopback escape hatch) every session has an
   empty principal and shares one anonymous allowance, so that mode is bounded
   too.

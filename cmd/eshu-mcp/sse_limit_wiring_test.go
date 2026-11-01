@@ -119,3 +119,63 @@ func TestWireServerRejectsInvalidSSESessionCap(t *testing.T) {
 		}
 	}
 }
+
+// TestWireServerBoundsSSESessionsProcessWideFromEnv proves the ceiling knob
+// reaches the transport: with a ceiling of 1 and a roomy per-principal cap, a
+// second principal is refused, and a malformed ceiling fails the boot.
+func TestWireServerBoundsSSESessionsProcessWideFromEnv(t *testing.T) {
+	getenv := e2eEnvGetter(map[string]string{
+		"ESHU_API_KEY":                    "deploy-key",
+		"ESHU_MCP_MAX_SSE_SESSIONS_TOTAL": "1",
+	})
+	_, server, extra, err := wireServer([]string{"--core-base-url", "https://core:8443"}, getenv, quietLogger())
+	if err != nil {
+		t.Fatalf("wireServer() error = %v", err)
+	}
+	mux := server.Handler(extra)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	first := httptest.NewRequest(http.MethodGet, "/sse", nil).WithContext(ctx)
+	first.Header.Set("Authorization", "Bearer deploy-key")
+	rec := &lockedRecorder{ResponseRecorder: httptest.NewRecorder()}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mux.ServeHTTP(rec, first)
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, body := rec.snapshot(); strings.Contains(body, "event: endpoint") {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// A different spelling of the shared key is the same principal; a
+	// distinct forwarded credential needs core admission, so use the ceiling
+	// check through the shared key's second session instead.
+	// The deadline keeps a missing ceiling a failed assertion, not a hang.
+	secondCtx, secondCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer secondCancel()
+	second := httptest.NewRequest(http.MethodGet, "/sse", nil).WithContext(secondCtx)
+	second.Header.Set("Authorization", "bearer deploy-key")
+	secondRec := httptest.NewRecorder()
+	mux.ServeHTTP(secondRec, second)
+	if secondRec.Code != http.StatusTooManyRequests {
+		t.Fatalf("session over the ceiling = %d, want 429", secondRec.Code)
+	}
+	cancel()
+	<-done
+
+	for _, value := range []string{"abc", "0", "-1"} {
+		bad := e2eEnvGetter(map[string]string{
+			"ESHU_API_KEY":                    "deploy-key",
+			"ESHU_MCP_MAX_SSE_SESSIONS_TOTAL": value,
+		})
+		_, _, _, err := wireServer([]string{"--core-base-url", "https://core:8443"}, bad, quietLogger())
+		if err == nil || !strings.Contains(err.Error(), "ESHU_MCP_MAX_SSE_SESSIONS_TOTAL") {
+			t.Errorf("value %q: wireServer() error = %v, want a refusal naming the variable", value, err)
+		}
+	}
+}
