@@ -51,8 +51,8 @@ independent build, test, and image steps.
 
 ## NOT_CHECKED
 
-The release lane has cut `v0.2.7` (auto-tag, then a dispatched release run)
-and `v0.2.8` (a human tag push), each with Trivy, provenance, SBOM and
+The release lane has cut `v0.2.7` and `v0.2.9` (auto-tag, then a dispatched
+release run) and `v0.2.8` (a human tag push), each with Trivy, provenance, SBOM and
 `verify-published` green; `docs/release.md` Status records the run ids and
 digests. QA deployment from the destination artifact, parity
 re-proof against the live core path, rehearsed rollback, owner production

@@ -172,7 +172,7 @@ publishing anything.
 
 ## Status
 
-The workflow has cut real releases: `v0.2.7` (auto) and `v0.2.8`
-(manual), each with Trivy, provenance, SBOM, and `verify-published`
-green (see above). The router-surface/ranker delta (blocker 3 on
+The workflow has cut real releases: `v0.2.7` (auto), `v0.2.8`
+(manual) and `v0.2.9` (auto), each with Trivy, provenance, SBOM, and
+`verify-published` green (see above). The router-surface/ranker delta (blocker 3 on
 `eshu-hq/eshu#9521`) still gates any QA deploy and any cutover.
