@@ -38,6 +38,27 @@ Run `python3 scripts/check-parity.py` to re-verify the in-repo invariants.
 Cross-repo byte-parity re-verification needs the source checkout; the
 commands are recorded above.
 
+## Edge credential admission (eshu-hq/eshu-mcp#48, #50)
+
+The edge door check classifies credentials by shape and does not admit them.
+
+- A dotted Bearer credential is a JWT attempt and is verified at the door.
+- A dotless Bearer (Eshu personal and scoped tokens) and any non-Bearer scheme
+  forward to core as a `fwd:` principal. Core admits them on `tools/call`
+  dispatch.
+- `initialize`, `tools/list`, `ping`, and the `GET /sse` session mint answer a
+  forwarded principal without core admission. Core refuses these uniformly, so
+  this is an open parity gap, tracked in eshu-hq/eshu-mcp#50.
+- Operator constraint: core treats exactly three non-empty dot-separated
+  segments as a JWT; any other shape falls through to its token registries.
+  The edge treats any dotted Bearer as a JWT attempt. A token in
+  `ESHU_SCOPED_TOKENS_FILE` that contains a dot is therefore refused at the
+  edge, although core would accept it unless it has the three-segment JWT
+  shape. Use dotless tokens.
+- The edge denial log line carries the same message and `iss` and `outcome`
+  keys as core's `deny()` line, plus `method` and `path`. The E2E scraper
+  matches on the message and `outcome`.
+
 ## NOT_CHECKED
 
 Live MCP calls against deployed artifacts, QA EKS proof, concurrent

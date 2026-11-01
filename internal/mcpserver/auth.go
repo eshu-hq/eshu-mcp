@@ -10,8 +10,10 @@ package mcpserver
 // docs/parity.md: the edge refuses a headerless request, binds SSE sessions
 // to the presenting principal, and forwards the caller credential verbatim
 // to core on every dispatch, where core remains the admission authority.
-// When discovery is configured, Bearer JWTs are verified at the edge first
-// (issuer, audience, lifetime, signature); see EdgeAuthMiddlewareWithVerifier.
+// When discovery is configured, dotted Bearer credentials (JWT attempts) are
+// verified at the edge first (issuer, audience, lifetime, signature); dotless
+// Bearer and non-Bearer credentials forward to core. See
+// EdgeAuthMiddlewareWithVerifier.
 // A constant-time shared-key comparison recognizes the deployment key as
 // the "shared" principal for stable session binding. See docs/parity.md.
 
@@ -89,8 +91,12 @@ func EdgeAuthMiddlewareWithChallenge(sharedKey, challenge string, logger *slog.L
 }
 
 // EdgeAuthMiddlewareWithVerifier is EdgeAuthMiddlewareWithChallenge plus
-// the door check: when verifier is non-nil, a Bearer JWT is verified
-// against the configured issuers before it may proceed. An unrecognized
+// the door check: when verifier is non-nil, a dotted Bearer credential (a JWT
+// attempt) is verified against the configured issuers before it may proceed.
+// A dotless Bearer and any non-Bearer credential forward as a "fwd:"
+// principal and core admits them on dispatch; until eshu-hq/eshu-mcp#50
+// lands, initialize, tools/list, ping, and the SSE session mint answer such a
+// principal without core admission. An unrecognized
 // credential answers the discovery challenge so capable clients steer at
 // the metadata document; a post-match failure (recognized issuer, wrong
 // audience or bad crypto) answers the bare challenge and never steers.

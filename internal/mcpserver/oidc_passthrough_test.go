@@ -8,6 +8,12 @@ import (
 // Edge opaque-credential pass-through: dotless Bearer credentials
 // (personal and scoped tokens) forward to core, where core remains the
 // admission authority; only dotted JWT attempts verify at the door.
+//
+// The door classifies shape, not admission. "Bearer not-a-jwt" is admitted
+// here on purpose: core's file registry accepts any operator-chosen string,
+// so a length or charset rule would deny valid tokens while stopping no
+// attacker. The locally served methods that a forwarded principal reaches
+// without core admission are tracked in eshu-hq/eshu-mcp#50.
 
 func TestVerifyOpaqueBearerPassesThrough(t *testing.T) {
 	t.Parallel()

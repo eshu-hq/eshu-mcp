@@ -171,7 +171,7 @@ func TestVerifyMalformedUnrecognized(t *testing.T) {
 	v := testVerifier(t, srv)
 
 	// Only JWT-shaped-but-unparsable input denies as malformed here: an
-	// empty Bearer [REDACTED] a present scheme with no credential, and
+	// empty Bearer (a present scheme with no credential), and
 	// "aaaa.bbbb.cccc" (the E2E malformed probe's exact input). Opaque
 	// non-shaped credentials pass through (see
 	// TestVerifyOpaqueBearerPassesThrough).

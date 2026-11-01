@@ -1,12 +1,24 @@
 package mcpserver
 
-// Edge OIDC verification: the door check. When discovery is configured,
-// every Bearer-shaped credential is verified — recognized issuer, matching
-// audience, live expiry, present subject, signature from the issuer's own
-// JWKS origin — before it may proceed. Anything else is refused at the
-// edge, because core admission cannot protect the locally served surface
-// (tools/list, discovery) that never dispatches. Other schemes keep the
-// intentional legacy pass-through to core; without discovery, so do Bearer JWTs.
+// Edge OIDC verification: the door check. When discovery is configured, a
+// dotted Bearer credential (a JWT attempt) is verified — recognized issuer,
+// matching audience, live expiry, present subject, signature from the
+// issuer's own JWKS origin — and refused at the edge on any failure.
+//
+// The door classifies shape; it does not admit. A dotless Bearer (Eshu
+// personal and scoped tokens carry no claims to check) and every non-Bearer
+// scheme forward as a "fwd:" principal, and core admits them on dispatch.
+// tools/call is therefore gated by core, but the locally served surface
+// (initialize, tools/list, ping, and the GET /sse session mint) answers any
+// forwarded principal without core admission. Core refuses those methods
+// uniformly, so this is a known parity gap tracked in eshu-hq/eshu-mcp#50.
+// Without discovery, Bearer JWTs forward the same way.
+//
+// Operator constraint: core treats exactly three non-empty dot-separated
+// segments as a JWT and lets every other shape fall through to its token
+// registries. The edge treats any dotted Bearer as a JWT attempt, so a
+// file-registry token (ESHU_SCOPED_TOKENS_FILE) that contains a dot is
+// refused at the door; see docs/parity.md.
 
 import (
 	"crypto/sha256"
@@ -109,8 +121,8 @@ type VerifyResult struct {
 }
 
 // Verify checks one Authorization header value. A credential that is not
-// a Bearer, and an opaque (dotless) Bearer [REDACTED] no claims to check, keeps the
-// legacy pass-through: the edge cannot verify what has no verifiable
+// a Bearer, and an opaque (dotless) Bearer token that has no claims to check,
+// keeps the legacy pass-through: the edge cannot verify what has no verifiable
 // shape, and core still admits on dispatch. Only a dotted Bearer - a
 // JWT attempt - is verified against the configured issuers (issuer,
 // audience, lifetime, signature).
@@ -129,7 +141,7 @@ func (v *TokenVerifier) Verify(authHeader string) VerifyResult {
 	if v.sharedKey != "" && subtle.ConstantTimeCompare([]byte(prefix+raw), []byte(prefix+v.sharedKey)) == 1 {
 		return VerifyResult{Principal: "shared"}
 	}
-	// A Bearer [REDACTED] that never had the compact JWT shape carries no
+	// A Bearer token that never had the compact JWT shape carries no
 	// claims to verify: opaque personal and scoped tokens keep the legacy
 	// pass-through and core admits on dispatch. This mirrors core's
 	// isJWTShaped gate (go/internal/oidcbearer/resolver.go), which falls
@@ -182,7 +194,7 @@ func claimString(claims jwt.MapClaims, key string) string {
 // isOpaqueCredential reports whether raw can never be a compact JWT:
 // Eshu-issued personal and scoped tokens are opaque hex/base64 strings
 // with no dots (see core go/internal/oidcbearer/claims.go), so a dotless
-// Bearer [REDACTED] no claims to verify and keeps the legacy pass-through to
+// Bearer token has no claims to verify and keeps the legacy pass-through to
 // core, where core remains the admission authority. Any dotted input is a
 // JWT attempt and stays on the verification path: core's strict shape
 // gate would fall an unsigned trailing-dot token through to a later
