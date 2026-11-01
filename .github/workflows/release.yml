@@ -103,14 +103,14 @@ jobs:
         run: |
           set -euo pipefail
           rc=0
-          out="$(gh release view "$TAG" --json url --jq .url 2>&1)" || rc=$?
+          out="$(gh api "repos/${GH_REPO}/releases/tags/${TAG}" --jq .html_url 2>&1)" || rc=$?
           if [ "$rc" -eq 0 ]; then
             echo "::error::Release ${TAG} already exists (${out}); refusing to republish it by dispatch" >&2
             exit 1
           fi
-          # Fail closed: only a clean "not found" means the tag is unreleased.
+          # Fail closed: only an explicit HTTP 404 means the tag is unreleased.
           case "$out" in
-            *"release not found"*) ;;
+            *"HTTP 404"*) ;;
             *) echo "::error::cannot tell whether ${TAG} is released: ${out}" >&2; exit 1 ;;
           esac
           git fetch --quiet origin main
@@ -120,11 +120,11 @@ jobs:
           fi
           # Only the newest vX.Y.Z may be released by dispatch: recovering
           # a lower tag would move the floating X.Y and X tags backward.
-          # Strict anchoring ignores pre-release tags; every step is
-          # fail-closed (set -e + pipefail), so an unreadable tag list or
-          # an empty result refuses the dispatch.
+          # Strict anchoring ignores pre-release tags. grep exits 1 on no
+          # match, so it is wrapped to let the empty-result message below
+          # fire; an unreadable tag list still aborts (set -e + pipefail).
           git fetch --quiet --tags --force origin
-          newest="$(git tag --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+          newest="$(git tag --list 'v[0-9]*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1)"
           if [ -z "$newest" ]; then
             echo "::error::no vX.Y.Z tag found; refusing to publish ${TAG} by dispatch" >&2
             exit 1
@@ -138,6 +138,7 @@ jobs:
         env:
           VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
           REF_TYPE: ${{ github.ref_type }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           # The Dockerfile interpolates VERSION into a shell-form RUN for
           # ldflags, so refuse anything but tag/sha characters before the
@@ -146,8 +147,11 @@ jobs:
             echo "refusing unsafe VERSION stamp: $VERSION" >&2
             exit 1
           fi
-          # A workflow_dispatch can name any tag; only vX.Y.Z may publish.
-          if [ "$REF_TYPE" = "tag" ] && ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+          # A workflow_dispatch can name any tag, so it must be a strict
+          # vX.Y.Z. A tag push already passed the v[0-9]* trigger and keeps
+          # the permissive check above (pre-release tags still publish).
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$REF_TYPE" = "tag" ] \
+            && ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "refusing to publish non-version tag: $VERSION" >&2
             exit 1
           fi
@@ -230,6 +234,7 @@ jobs:
         env:
           VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
           REF_TYPE: ${{ github.ref_type }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           # The Dockerfile interpolates VERSION into a shell-form RUN for
           # ldflags, so refuse anything but tag/sha characters before the
@@ -238,8 +243,11 @@ jobs:
             echo "refusing unsafe VERSION stamp: $VERSION" >&2
             exit 1
           fi
-          # A workflow_dispatch can name any tag; only vX.Y.Z may publish.
-          if [ "$REF_TYPE" = "tag" ] && ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+          # A workflow_dispatch can name any tag, so it must be a strict
+          # vX.Y.Z. A tag push already passed the v[0-9]* trigger and keeps
+          # the permissive check above (pre-release tags still publish).
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$REF_TYPE" = "tag" ] \
+            && ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "refusing to publish non-version tag: $VERSION" >&2
             exit 1
           fi
@@ -264,7 +272,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --quiet --tags --force origin
-          newest="$(git tag --list 'v[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+          newest="$(git tag --list 'v[0-9]*' | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1)"
           if [ "$newest" != "$TAG" ]; then
             echo "::error::${TAG} is no longer the newest tag (${newest:-none}); not publishing floating tags" >&2
             exit 1
@@ -371,23 +379,32 @@ jobs:
           # pullable X.Y.Z image at the pushed digest and a Release that
           # records it. Anything else fails here, loudly.
           ver="${TAG#v}"
-          major="${ver%%.*}"
-          rest="${ver#*.}"
-          minor="${rest%%.*}"
           # X.Y.Z (the v is stripped by metadata-action's semver pattern) is
-          # immutable per release: it must equal the pushed digest. X.Y and X move with later patches: they must only
-          # resolve.
+          # immutable per release: it must equal the pushed digest.
           got="sha256:$(docker buildx imagetools inspect --raw "${IMAGE}:${ver}" | sha256sum | cut -d' ' -f1)"
           if [ "$got" != "$DIGEST" ]; then
             echo "::error::${IMAGE}:${ver} is ${got}, want ${DIGEST}" >&2
             exit 1
           fi
-          for t in "${major}.${minor}" "$major"; do
-            docker buildx imagetools inspect --raw "${IMAGE}:${t}" >/dev/null
-          done
+          # X.Y and X move with later patches: they must only resolve. A
+          # pre-release tag (human tag push only) is not assumed to publish them.
+          if printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            major="${ver%%.*}"
+            rest="${ver#*.}"
+            minor="${rest%%.*}"
+            for t in "${major}.${minor}" "$major"; do
+              docker buildx imagetools inspect --raw "${IMAGE}:${t}" >/dev/null
+            done
+          else
+            echo "::notice::${TAG} is not a strict vX.Y.Z tag; skipping the moving-tag checks"
+          fi
           body="$(gh release view "$TAG" --json body --jq .body)"
           case "$body" in
             *"$DIGEST"*) ;;
             *) echo "::error::Release ${TAG} does not record ${DIGEST}" >&2; exit 1 ;;
           esac
-          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx 'eshu-mcp-image-spdx.json'
+          assets="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          if ! grep -qx 'eshu-mcp-image-spdx.json' <<<"$assets"; then
+            echo "::error::Release ${TAG} has no eshu-mcp-image-spdx.json asset" >&2
+            exit 1
+          fi

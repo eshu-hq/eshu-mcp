@@ -28,40 +28,72 @@ bumps and merges without the label stay manual. A tag pushed with the
 default `GITHUB_TOKEN` starts no workflow run (GitHub does not trigger
 runs from events that token causes, except `workflow_dispatch` and
 `repository_dispatch`), so `auto-tag` follows the push with
-`gh workflow run release.yml --ref vX.Y.Z`, and `release` runs the same
-publish path for a dispatch on a tag ref as for a tag push. The dispatch
-is skipped when a release run for that tag already exists, so a tag
-cannot be published twice. To dry-run the bump computation without
-pushing, run Actions, `auto-tag`, Run workflow.
+`gh workflow run release.yml --ref refs/tags/vX.Y.Z`, and `release`
+runs the same publish path for a dispatch on a tag ref as for a tag
+push. The dispatch is skipped when a release run for that tag already
+exists, so a tag is not published twice. To dry-run the bump
+computation without pushing, run Actions, `auto-tag`, Run workflow.
 
-Recovery: if a tag exists but has no `release` run or Release (the
-dispatch failed, or an `auto-tag` re-run hit the "already tagged"
-no-op), start the release by hand:
+Both routes publish the same image: a human `v[0-9]*` tag push (the
+original trigger, unchanged) and the `auto-tag` dispatch. A human push
+keeps the permissive tag check, so a pre-release tag such as
+`v0.3.0-rc.1` still publishes (`verify-published` skips the moving
+`X.Y` and `X` checks for it). A dispatch must name a strict `vX.Y.Z`
+tag.
+
+## Recovery
+
+If a tag exists but has no `release` run or Release (the dispatch
+failed, or an `auto-tag` re-run hit the "already tagged" no-op), start
+the release by hand:
 
 ```bash
-gh workflow run release.yml --repo eshu-hq/eshu-mcp --ref vX.Y.Z
+gh workflow run release.yml --repo eshu-hq/eshu-mcp \
+  --ref refs/tags/vX.Y.Z
 ```
 
 A dispatch runs the workflow file as it exists at that ref, so this
-works only for tags cut after the dispatch handling landed; an older tag
-needs a new patch tag instead. The dispatch is refused (fails closed,
-before the scan and push) when the tag already has a Release or its
-commit is not on `main`, or it is not the newest `vX.Y.Z` tag (strictly
-matched; pre-release tags are ignored). Recovery can therefore complete a
-missing release for the newest tag only: it never replays a published
-tag or moves the floating `X.Y` and `X` tags backward. The newest-tag
-check runs twice: first in `build-and-scan`, and again in `push` right
-before the image is pushed, because a newer tag can be released while
-the scan runs. `v0.2.6` is
-intentionally left unreleased and is superseded by the next patch tag;
-a superseded tag whose release failed is not recovered, the next patch
-carries the fix forward.
+works only for tags cut after the dispatch handling landed; an older
+tag needs a new patch tag instead.
+
+A tag dispatch is refused (before the scan and push, failing closed)
+when any of these holds:
+
+- the tag already has a Release, or the Release lookup fails with
+  anything other than an explicit HTTP 404;
+- the tag commit is not an ancestor of `main`;
+- the tag is not the newest strict `vX.Y.Z` tag (pre-release tags are
+  ignored), or no such tag can be listed.
+
+So recovery can complete a missing release for the newest tag only. In
+the normal case it does not replay a published tag or move the floating
+`X.Y` and `X` tags backward. The newest-tag check runs twice, in
+`build-and-scan` and again in `push` right before the image is pushed,
+because a newer tag can be released while the scan runs. A window of a
+few seconds between that last check and the push remains: GHCR offers
+no compare-and-set.
+
+`v0.2.6` is intentionally left unreleased and is superseded by the next
+patch tag. A superseded tag whose release failed is not recovered; the
+next patch carries the fix forward.
+
+If a tag run fails after its Release exists (for example in
+`verify-published`), use "Re-run failed jobs" on that run. Do not
+dispatch again: the replay guard refuses a tag that already has a
+Release.
 
 Every tag run (push or dispatch) ends with `verify-published`, which
-fails the run unless `:X.Y.Z` (the `v` is dropped from image tags) resolves to the pushed digest
-and the Release records it. `auto-tag` fails if the dispatch errors or
-no release run appears within about a minute, so a bare tag is never a
-silent outcome.
+fails the run unless `:X.Y.Z` (the `v` is dropped from image tags)
+resolves to the pushed digest, the moving `X.Y` and `X` tags resolve
+(strict tags only), and the Release records the digest and carries the
+SBOM. `auto-tag` fails if the dispatch errors or no release run appears
+within about a minute, so a bare tag is never a silent outcome.
+
+The first live run must confirm two assumptions the local tests
+stub: that a dispatched run reports the tag commit as `headSha` (the
+`auto-tag` poll matches on it) and that `gh run list --branch <tag>`
+matches runs whose `head_branch` is the tag name (the duplicate-run
+check uses it).
 
 Watch the `release` run on the tag: `build-and-scan`, then `push`,
 then `github-release`. The release body records the pushed digest;
@@ -79,8 +111,8 @@ The tag also stamps the binary: the Dockerfile `VERSION` arg reaches
 `-ldflags "-X main.version=..."`, so the `initialize` handshake reports
 the release instead of `dev` (pinned by
 `TestBuildServerReportsBuildVersion` for the handshake hop and
-`TestReleaseStampPlumbingGuardsVersionArg` for the Dockerfile-to-workflow
-link).
+`TestReleaseStampPlumbingGuardsVersionArg` for the
+Dockerfile-to-workflow link).
 
 ## What the workflow proves
 
@@ -97,9 +129,10 @@ link).
 ## Prove the workflow without pushing
 
 Run it by hand from a branch: Actions, `release`, Run workflow. A
-dispatch on a branch (never a tag) builds the local `linux/amd64` image only and skips the scan,
-login, push, attestations, SBOM, and the Release, so it proves the
-Dockerfile and workflow syntax without publishing anything.
+dispatch on a branch (never a tag) builds the local `linux/amd64`
+image only and skips the scan, login, push, attestations, SBOM, and
+the Release, so it proves the Dockerfile and workflow syntax without
+publishing anything.
 
 ## First-cut status
 

@@ -9,9 +9,10 @@
 # (except workflow_dispatch and repository_dispatch; GitHub docs,
 # "Triggering a workflow from a workflow"), so release.yml's `v[0-9]*`
 # push trigger never fires for it. The job therefore dispatches
-# `release.yml` on the new tag itself (`gh workflow run`), and release.yml
-# treats a dispatch on a tag ref exactly like the tag push: build, scan,
-# push, cut the Release. Minor/major bumps and any merge without the label
+# `release.yml` on the new tag itself (`gh workflow run release.yml
+# --ref refs/tags/vX.Y.Z`), and release.yml treats a dispatch on a tag
+# ref exactly like the tag push: build, scan, push, cut the Release.
+# Minor/major bumps and any merge without the label
 # stay manual: version judgment stays human, only the routine-patch wait
 # is automated.
 #
@@ -34,7 +35,7 @@
 #   (red run plus an error annotation) instead of leaving a bare tag.
 # - Recovery: if the tag exists but its release run is missing (dispatch
 #   failed, or a re-run hit the "already tagged" no-op), start it by hand:
-#     gh workflow run release.yml --ref vX.Y.Z
+#     gh workflow run release.yml --ref refs/tags/vX.Y.Z
 #
 # Pinned actions (re-verify with git ls-remote when auditing; Dependabot
 # github-actions proposes bumps, weekly grouped):
@@ -136,7 +137,7 @@ jobs:
             exit 0
           fi
           started="$(date -u -d '-60 seconds' '+%Y-%m-%dT%H:%M:%SZ')"
-          gh workflow run release.yml --ref "$NEXT_TAG"
+          gh workflow run release.yml --ref "refs/tags/${NEXT_TAG}"
           echo "dispatched release.yml on ${NEXT_TAG}"
           # A tag with no release run is the silent failure this workflow
           # exists to prevent, so fail loudly unless the run shows up. Match
@@ -152,5 +153,5 @@ jobs:
             fi
             sleep 5
           done
-          echo "::error::${NEXT_TAG} is tagged but no release run appeared; start it with: gh workflow run release.yml --ref ${NEXT_TAG}"
+          echo "::error::${NEXT_TAG} is tagged but no release run appeared; start it with: gh workflow run release.yml --ref refs/tags/${NEXT_TAG}"
           exit 1
