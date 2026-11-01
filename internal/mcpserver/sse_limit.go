@@ -69,8 +69,10 @@ const (
 type SSEStats struct {
 	// Active is the number of live SSE sessions across all principals.
 	Active int
-	// Rejected counts GET /sse requests refused because the principal was at
-	// its cap, since start.
+	// Rejected counts GET /sse requests refused since start because the
+	// principal was at its per-principal cap or the process was at its
+	// session ceiling. It does not say which bound; the refusal log's
+	// outcome field does.
 	Rejected int64
 }
 
