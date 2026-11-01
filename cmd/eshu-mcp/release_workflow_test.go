@@ -421,10 +421,17 @@ func TestReleaseTagDispatchRefusesReplayAndOffMain(t *testing.T) {
 		"release not found",
 		"git merge-base --is-ancestor",
 		"origin/main",
+		// Highest-tag rule: recovering a lower, never-released tag would
+		// move the floating X.Y and X tags back past a newer release.
+		"git fetch --quiet --tags",
+		"git tag --list 'v[0-9]*'",
+		`grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$'`,
+		"sort -V",
+		`"$newest" != "$TAG"`,
 		"exit 1",
 	} {
 		if !strings.Contains(section, want) {
-			t.Errorf("replay guard lacks %q: it must fail closed on an existing Release, an API error, or an off-main tag", want)
+			t.Errorf("replay guard lacks %q: it must fail closed on an existing Release, an API error, an off-main tag, or a tag that is not the newest vX.Y.Z", want)
 		}
 	}
 }
