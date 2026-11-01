@@ -106,7 +106,10 @@ it; a malformed or non-positive value fails the boot).
 - Forwarded principals are canonical: the scheme is lowercased and the secret's
   surrounding whitespace dropped before hashing, on both the verifier and
   no-verifier paths, so `Bearer x`, `bearer x`, and `Bearer  x` are one
-  principal and one allowance. The secret stays case-sensitive. The shared key
+  principal and one allowance. The cut matches core's bearer parsing (first
+  space, then `strings.TrimSpace` on scheme and secret), so whitespace glued to
+  the scheme (`Bearer\t x`) folds too; a separator-free form core refuses
+  (`Bearer\tx`) never passes admission. The secret stays case-sensitive. The shared key
   is matched with the same case-insensitive scheme on both paths.
 - A process-wide ceiling (default 2048, `ESHU_MCP_MAX_SSE_SESSIONS_TOTAL`)
   backs the per-principal cap for what it cannot see: many distinct valid

@@ -22,6 +22,12 @@ func TestForwardedPrincipalIsCanonicalAcrossSpellings(t *testing.T) {
 		"Bearer  opaque-token",
 		"Bearer opaque-token ",
 		"  Bearer opaque-token",
+		// Core cuts at the first space and trims the scheme, so whitespace
+		// glued to the scheme still reaches the same token there.
+		"Bearer\t opaque-token",
+		"Bearer\t\t opaque-token",
+		"BEARER\u00a0 opaque-token",
+		"bearer\v opaque-token",
 	}
 	want, ok := edgeAuth("deploy-key", spellings[0])
 	if !ok || !strings.HasPrefix(want, "fwd:") {
@@ -135,5 +141,26 @@ func TestSSESessionCeilingDefaultsAndInvalidValues(t *testing.T) {
 		if got := s.maxSSETotal(); got != defaultMaxSSESessionsTotal {
 			t.Errorf("%s: ceiling = %d, want default %d", name, got, defaultMaxSSESessionsTotal)
 		}
+	}
+}
+
+// TestSchemeTrimmedLikeCore pins the shared-key match to core's rule for a
+// scheme with whitespace glued to it, and documents that a separator-free
+// tab form (which core refuses) stays its own principal.
+func TestSchemeTrimmedLikeCore(t *testing.T) {
+	t.Parallel()
+
+	verifier := NewTokenVerifier("", nil, "deploy-key")
+	for _, header := range []string{"Bearer\t deploy-key", "bearer\u00a0 deploy-key"} {
+		if got, _ := edgeAuth("deploy-key", header); got != "shared" {
+			t.Errorf("edgeAuth(%q) = %q, want shared", header, got)
+		}
+		if got := verifier.Verify(header).Principal; got != "shared" {
+			t.Errorf("Verify(%q) = %q, want shared", header, got)
+		}
+	}
+	canonical, _ := edgeAuth("deploy-key", "Bearer opaque-token")
+	if tabOnly, _ := edgeAuth("deploy-key", "Bearer\topaque-token"); tabOnly == canonical {
+		t.Error("a tab-only form, which core refuses, was folded into the Bearer principal")
 	}
 }

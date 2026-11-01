@@ -7,7 +7,8 @@ package mcpserver
 // so hashing the raw header would give one opaque token a fresh principal for
 // every spelling ("Bearer x", "bearer x", "Bearer  x") and let it walk past
 // the cap. The scheme is lowercased and the secret's surrounding whitespace is
-// dropped before hashing; the secret itself stays case-sensitive.
+// dropped before hashing, by core's own rule (splitCredential); the secret
+// itself stays case-sensitive.
 
 import (
 	"crypto/sha256"
@@ -16,13 +17,25 @@ import (
 	"strings"
 )
 
+// splitCredential cuts a credential into its scheme and secret exactly as
+// core's bearer parsing does (go/internal/query/auth.go): cut at the FIRST
+// space, then trim the scheme and the secret with strings.TrimSpace. Matching
+// core, not the RFC, is the point: whitespace glued to the scheme ("Bearer\t
+// x", "Bearer\u00a0 x") still reaches the same token in core, so the edge must
+// treat those spellings as one credential. found is false when there is no
+// space, which core refuses; such a credential never passes admission.
+func splitCredential(credential string) (scheme, secret string, found bool) {
+	rawScheme, rest, found := strings.Cut(strings.TrimSpace(credential), " ")
+	return strings.TrimSpace(rawScheme), strings.TrimSpace(rest), found
+}
+
 // forwardedPrincipal returns the opaque "fwd:" principal for a credential the
 // edge cannot verify. It is stable across scheme case and spacing and never
 // reveals the credential.
 func forwardedPrincipal(credential string) string {
 	canonical := strings.TrimSpace(credential)
-	if scheme, rest, ok := strings.Cut(canonical, " "); ok {
-		canonical = strings.ToLower(scheme) + " " + strings.TrimSpace(rest)
+	if scheme, secret, found := splitCredential(canonical); found {
+		canonical = strings.ToLower(scheme) + " " + secret
 	}
 	sum := sha256.Sum256([]byte(canonical))
 	return forwardedPrincipalPrefix + hex.EncodeToString(sum[:])
@@ -35,9 +48,9 @@ func matchesSharedKey(sharedKey, credential string) bool {
 	if sharedKey == "" {
 		return false
 	}
-	scheme, rest, _ := strings.Cut(strings.TrimSpace(credential), " ")
+	scheme, secret, _ := splitCredential(credential)
 	if !strings.EqualFold(scheme, "Bearer") {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(strings.TrimSpace(rest)), []byte(sharedKey)) == 1
+	return subtle.ConstantTimeCompare([]byte(secret), []byte(sharedKey)) == 1
 }
