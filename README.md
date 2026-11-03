@@ -32,7 +32,7 @@ count/order/pins only; the core-OpenAPI gate does not exist yet).
 
 | Dest | Core | Provenance |
 |---|---|---|
-| `0.2.9` (`sha256:a3fbe4…`) | `50a0ddd3335422c0454be75c9a160a4083a799b7` (image `sha256:6a7966…`) | QA transport/auth/envelope parity, 2026-11-03 |
+| `0.2.9` (`sha256:a3fbe4…`) | `50a0ddd3335422c0454be75c9a160a4083a799b7` (image `sha256:6a7966…`) | `docs/qa/0.2.9-parity-20261103.md` (transport/auth/envelope + rollback, 2026-11-03) |
 
 Oldest supported = newest supported = the row above. No N-1/N+1 blanket
 claim. Widen the window only by adding a proven row, never by inference.
