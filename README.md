@@ -21,6 +21,20 @@ one explicit public contract with a single publisher, never whichever adapter
 imports them first. See
 [shared shapes](contracts/shared-shapes/v1/SHARED_SHAPES.md).
 
+## Compatibility
+
+This repository is the authoritative publisher of the 171-tool MCP
+registry. Core (`eshu`) publishes only the HTTP/OpenAPI contract this
+repository consumes; any tool add/remove/rename lands here with a
+contract test against core OpenAPI.
+
+| Dest | Core | Provenance |
+|---|---|---|
+| `0.2.9` | `sha-5eb6ec84`-era | QA deploy + parity re-proof, 2026-11-03 |
+
+Oldest supported = newest supported = the row above. No N-1/N+1 blanket
+claim. Widen the window only by adding a proven row, never by inference.
+
 ## Layout
 
 - `contracts/tool-registry/v1/tools.json`: versioned tool-contract surface.
