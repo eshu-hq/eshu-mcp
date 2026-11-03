@@ -117,10 +117,20 @@ removed only after that acceptance.
 ## Open questions (owner rulings needed)
 
 - Oldest/newest supported core-to-MCP version pairs and credential handling
-  for the independently released MCP server (acceptance criteria still
-  NOT_CHECKED).
+  for the independently released MCP server: DECIDED per the arbiter ruling
+  recorded on `eshu-hq/eshu#9498` — publisher is dest `eshu-mcp`, sole
+  supported pair is dest `0.2.9` with core
+  `50a0ddd3335422c0454be75c9a160a4083a799b7` (see `README.md`
+  Compatibility). Credential handling (shared-key Bearer, secret-mounted,
+  never logged) proven on QA 2026-11-03.
 - Which explicit public contract publishes the shared envelope/result shapes
   (SDK fact-schema module versus a read-contract module), per the rule that
-  adapters stay separate and shared shapes get one publisher.
+  adapters stay separate and shared shapes get one publisher: DECIDED —
+  publisher is this repository (`contracts/shared-shapes/v1`), per the same
+  ruling (no dual-publish).
 - QA EKS deployment topology and the rehearsed rollback for this state
-  boundary (restore prior artifacts, fence claims, replay safely).
+  boundary: topology APPROVED for QA only per the ruling (ClusterIP-only,
+  `--core-base-url http://eshu:8080`, `TOOL_SURFACE=router`); rollback
+  REHEARSED on QA 2026-11-03 (edge to 0 and back to 1 on `0.2.9`, log on
+  `eshu-hq/eshu#9498`). Prod promotion still needs a separate
+  ingress/auth ruling.

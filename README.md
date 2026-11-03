@@ -24,16 +24,21 @@ imports them first. See
 ## Compatibility
 
 This repository is the authoritative publisher of the 171-tool MCP
-registry. Core (`eshu`) publishes only the HTTP/OpenAPI contract this
-repository consumes; any tool add/remove/rename lands here with a
-contract test against core OpenAPI.
+registry (arbiter ruling recorded on `eshu-hq/eshu#9498`). Core (`eshu`)
+publishes only the HTTP/OpenAPI contract this repository consumes; any
+tool add/remove/rename must land here with a contract test against core
+OpenAPI (forward rule — `scripts/check-parity.py` covers in-repo
+count/order/pins only; the core-OpenAPI gate does not exist yet).
 
 | Dest | Core | Provenance |
 |---|---|---|
-| `0.2.9` | `sha-5eb6ec84`-era | QA deploy + parity re-proof, 2026-11-03 |
+| `0.2.9` (`sha256:a3fbe4…`) | `50a0ddd3335422c0454be75c9a160a4083a799b7` (image `sha256:6a7966…`) | QA transport/auth/envelope parity, 2026-11-03 |
 
 Oldest supported = newest supported = the row above. No N-1/N+1 blanket
 claim. Widen the window only by adding a proven row, never by inference.
+The router-surface/ranker delta (blocker 3 on `eshu-hq/eshu#9521`) stays
+open and is out of scope of this row: this row proves the deployed
+transport, auth gates, hostile shapes, and router find/call path only.
 
 ## Layout
 
