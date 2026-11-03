@@ -39,6 +39,9 @@ claim. Widen the window only by adding a proven row, never by inference.
 The router-surface/ranker delta (blocker 3 on `eshu-hq/eshu#9521`) stays
 open and is out of scope of this row: this row proves the deployed
 transport, auth gates, hostile shapes, and router find/call path only.
+This section supersedes the open questions in
+`docs/source/CUTOVER_OWNERSHIP.md`, which stays byte-exact as the pinned
+verbatim source copy (parity-gated) and cannot carry the ruling itself.
 
 ## Layout
 
