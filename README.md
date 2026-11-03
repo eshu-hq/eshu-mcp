@@ -21,6 +21,28 @@ one explicit public contract with a single publisher, never whichever adapter
 imports them first. See
 [shared shapes](contracts/shared-shapes/v1/SHARED_SHAPES.md).
 
+## Compatibility
+
+This repository is the authoritative publisher of the 171-tool MCP
+registry (arbiter ruling recorded on `eshu-hq/eshu#9498`). Core (`eshu`)
+publishes only the HTTP/OpenAPI contract this repository consumes; any
+tool add/remove/rename must land here with a contract test against core
+OpenAPI (forward rule — `scripts/check-parity.py` covers in-repo
+count/order/pins only; the core-OpenAPI gate does not exist yet).
+
+| Dest | Core | Provenance |
+|---|---|---|
+| `0.2.9` (`sha256:a3fbe4…`) | `50a0ddd3335422c0454be75c9a160a4083a799b7` (image `sha256:6a7966…`) | `docs/qa/0.2.9-parity-20261103.md` (transport/auth/envelope + rollback, 2026-11-03) |
+
+Oldest supported = newest supported = the row above. No N-1/N+1 blanket
+claim. Widen the window only by adding a proven row, never by inference.
+The router-surface/ranker delta (blocker 3 on `eshu-hq/eshu#9521`) stays
+open and is out of scope of this row: this row proves the deployed
+transport, auth gates, hostile shapes, and router find/call path only.
+This section supersedes the open questions in
+`docs/source/CUTOVER_OWNERSHIP.md`, which stays byte-exact as the pinned
+verbatim source copy (parity-gated) and cannot carry the ruling itself.
+
 ## Layout
 
 - `contracts/tool-registry/v1/tools.json`: versioned tool-contract surface.

@@ -11,8 +11,10 @@ to the image. Main pushes publish the moving `main`, `latest`, and
 `sha-<full-sha>` tags; tag runs publish the semver tags and then cut a
 GitHub Release carrying the SBOM (the Release cut stays tag-only).
 Nothing here deploys: QA wiring lives in `iac-eks-eshu` (the
-`mcpServer.image` knob) and stays non-authoritative until the
-router-surface/ranker delta (blocker 3 on #9521) lands.
+`mcpServer.image` knob). QA deploys for transport/auth/envelope proof are
+live (see `docs/qa/`); the router-surface/ranker delta (blocker 3 on
+#9521) gates cutover and full ranker-truth parity, not the QA deploy
+itself.
 
 ## Cut a release
 
@@ -184,4 +186,5 @@ publishing anything.
 The workflow has cut real releases: `v0.2.7` (auto), `v0.2.8`
 (manual) and `v0.2.9` (auto), each with Trivy, provenance, SBOM, and
 `verify-published` green (see above). The router-surface/ranker delta (blocker 3 on
-`eshu-hq/eshu#9521`) still gates any QA deploy and any cutover.
+`eshu-hq/eshu#9521`) still gates cutover and full ranker-truth parity; QA
+deploys for transport/auth/envelope proof are live (see `docs/qa/`).

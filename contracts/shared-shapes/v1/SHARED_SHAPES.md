@@ -6,8 +6,9 @@ Refs `eshu-hq/eshu#8873`. Status: shape references, not a Go move.
 
 Adapters stay separate repositories. Shared response and result shapes belong
 to one explicit public contract with a single publisher, never to whichever
-adapter imports them first. This repository consumes that contract; it does
-not publish it and does not vendor core implementation packages.
+adapter imports them first. This repository publishes that contract
+(`contracts/shared-shapes/v1`, arbiter ruling recorded on
+`eshu-hq/eshu#9498`); it does not vendor core implementation packages.
 
 ## Shapes (by reference to the pinned source commit)
 
@@ -23,9 +24,9 @@ Envelope MIME type: `application/eshu.envelope+json`.
 Source commit for every hash:
 `e4c385f493494ed9d6c7f192b04ce0255361f621`.
 
-## Open question
+## Open question (decided)
 
-Which explicit public contract publishes these shapes (SDK fact-schema
-module versus a read-contract module) is still owner-decided in the source
-ownership map. No Go code moves here until that publisher exists; this file
-records the reference so the move stays mechanical.
+Publisher is this repository (`contracts/shared-shapes/v1`), per the
+arbiter ruling recorded on `eshu-hq/eshu#9498` (no dual-publish). The
+SDK fact-schema versus read-contract module alternative is rejected:
+adapters consume this contract; neither may republish it.

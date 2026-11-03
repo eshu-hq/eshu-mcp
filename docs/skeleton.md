@@ -54,8 +54,14 @@ independent build, test, and image steps.
 The release lane has cut `v0.2.7` and `v0.2.9` (auto-tag, then a dispatched
 release run) and `v0.2.8` (a human tag push), each with Trivy, provenance, SBOM and
 `verify-published` green; `docs/release.md` Status records the run ids and
-digests. QA deployment from the destination artifact, parity
-re-proof against the live core path, rehearsed rollback, owner production
-acceptance, and in-tree removal stay open too. Tool dispatch,
-authentication against live core, concurrency proofs, and the arbiter's
-version-pair and shared-shape-publisher decisions all stay open under #9498.
+digests. QA deployment from the destination artifact is DONE (`0.2.9`
+serving 1/1 against `http://eshu:8080`); parity re-proof against the live
+core path is DONE for transport, auth gates, hostile shapes, and router
+find/call (log on `eshu-hq/eshu#9498`, 2026-11-03), with the
+router-surface/ranker delta open per `eshu-hq/eshu#9521`; rollback is
+REHEARSED (edge to 0 and back to 1, same log). Tool dispatch and
+authentication against live core are DONE (same log). The arbiter's
+version-pair and shared-shape-publisher decisions are DECIDED (record on
+`eshu-hq/eshu#9498`; `README.md` Compatibility). Still open: concurrency
+proofs, owner production acceptance, and ratifying the in-tree removal
+(`cf357fcf47` removed `go/cmd/mcp-server` before acceptance).
