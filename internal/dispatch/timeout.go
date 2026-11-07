@@ -95,8 +95,31 @@ func deadlinePartialResult(status int, body []byte, toolName string, mode result
 }
 
 // dispatchErrorStructuredContent renders a dispatch context error as the
-// canonical {data, truth, error} timeout/cancelled envelope.
+// canonical {data, truth, error} timeout/cancelled envelope, and an
+// unknown-tool refusal as the canonical mcp_router_unknown_tool envelope
+// with the closest registered names. Anything else reports false and keeps
+// the caller's rendering.
 func dispatchErrorStructuredContent(err error) (map[string]any, bool) {
+	var unknownErr *UnknownToolError
+	if errors.As(err, &unknownErr) {
+		suggestions := unknownErr.Suggestions
+		if suggestions == nil {
+			suggestions = []string{}
+		}
+		return map[string]any{
+			"data":  nil,
+			"truth": nil,
+			"error": map[string]any{
+				"code":       unknownToolCode,
+				"message":    unknownErr.Error(),
+				"capability": "mcp.router",
+				"details": map[string]any{
+					"tool":        unknownErr.Tool,
+					"suggestions": suggestions,
+				},
+			},
+		}, true
+	}
 	var dispatchErr *dispatchContextErr
 	if !errors.As(err, &dispatchErr) {
 		return nil, false

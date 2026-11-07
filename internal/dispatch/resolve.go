@@ -8,7 +8,6 @@ package dispatch
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 
 	deadcodetools "github.com/eshu-hq/eshu-mcp/internal/dispatch/code/dead"
@@ -233,7 +232,7 @@ func selectRoute(toolName string, args map[string]any) (*routecontract.Request, 
 		if r, ok := impactRoute(toolName, args); ok {
 			return r, nil
 		}
-		return nil, fmt.Errorf("%w: %s", errUnknownTool, toolName)
+		return nil, newUnknownToolError(toolName)
 	}
 }
 
