@@ -250,6 +250,15 @@ func TestMessageMiscellany(t *testing.T) {
 	if !strings.Contains(string(text), "unknown tool: no_such_tool") {
 		t.Errorf("direct unknown tool content = %s, want the refusal", text)
 	}
+	structuredUnknown, marshalErr := json.Marshal(direct["structuredContent"])
+	if marshalErr != nil {
+		t.Fatalf("marshal direct unknown tool structured content: %v", marshalErr)
+	}
+	for _, want := range []string{"mcp_router_unknown_tool", "suggestions"} {
+		if !strings.Contains(string(structuredUnknown), want) {
+			t.Errorf("direct unknown tool structured content = %s, want %q", structuredUnknown, want)
+		}
+	}
 }
 
 // TestFailingDispatchRenders proves a transport-level dispatch failure
