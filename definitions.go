@@ -11,7 +11,12 @@ import (
 var definitionsJSON []byte
 
 // ToolDefinition is one served tool: the name, description, and input
-// schema tools/list advertises, verbatim from the source census.
+// schema tools/list advertises, seeded verbatim from the source census and
+// then deliberately diverged by eshu-hq/eshu-mcp#61 where a handler
+// unconditionally requires an argument the source schema omits (the schema
+// gains the requirement so call_tool answers mcp_router_invalid_arguments)
+// or where the requirement is an anyOf selector group the schema cannot
+// express (the description states the selector instead).
 type ToolDefinition struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`

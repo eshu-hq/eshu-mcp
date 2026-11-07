@@ -39,7 +39,10 @@
       "right": "<right>",
       "workload_id": "<workload_id>"
     },
-    "compose_replatforming_plan": {},
+    "compose_replatforming_plan": {
+      "account_id": "<account_id>",
+      "scope_kind": "account"
+    },
     "count_ci_cd_run_correlations": {},
     "count_container_image_identities": {},
     "count_documentation_findings": {},
@@ -90,7 +93,8 @@
     },
     "export_supply_chain_impact_packet": {},
     "find_blast_radius": {
-      "target": "<target>"
+      "target": "<target>",
+      "target_type": "repository"
     },
     "find_change_surface": {
       "target": "<target>"
@@ -890,7 +894,7 @@
       "name": "get_code_relationship_story"
     },
     {
-      "description": "Analyze code relationships like 'who calls this function' or 'class hierarchy'. Relationship-story query types return per-row provenance blocks. Supported query types include: find_callers, find_callees, find_all_callers, find_all_callees, find_cross_repo_callers, find_cross_repo_callees, find_importers, find_cross_repo_importers, who_modifies, class_hierarchy, cross_repo_class_hierarchy, overrides, cross_repo_overrides, dead_code, call_chain, find_cross_repo_call_chain, module_deps, variable_scope, find_complexity, find_functions_by_argument, find_functions_by_decorator. Every query type returns only granted repositories for a scoped token and rejects an ungranted repository selector. The remaining query types (who_modifies, module_deps, variable_scope, find_complexity, find_functions_by_argument, find_functions_by_decorator) dispatch to POST /api/v0/code/relationships with repo_id, target as the entity name, and an optional exact entity_id; that route has no limit or offset, so those are not applied to these query types (dead_code dispatches to POST /api/v0/code/dead-code): for a scoped token an entity outside the grant answers not found, and neighbours outside the grant, or with no repository, are omitted. Those responses carry outgoing_truncated and incoming_truncated; on the graph paths true means more neighbours exist in that direction than were returned, and on the content fallback it means a lookup reached its ceiling, so the list may be incomplete.",
+      "description": "Analyze code relationships like 'who calls this function' or 'class hierarchy'. Relationship-story query types return per-row provenance blocks. Supported query types include: find_callers, find_callees, find_all_callers, find_all_callees, find_cross_repo_callers, find_cross_repo_callees, find_importers, find_cross_repo_importers, who_modifies, class_hierarchy, cross_repo_class_hierarchy, overrides, cross_repo_overrides, dead_code, call_chain, find_cross_repo_call_chain, module_deps, variable_scope, find_complexity, find_functions_by_argument, find_functions_by_decorator. Every query type returns only granted repositories for a scoped token and rejects an ungranted repository selector. The remaining query types (who_modifies, module_deps, variable_scope, find_complexity, find_functions_by_argument, find_functions_by_decorator) dispatch to POST /api/v0/code/relationships with repo_id, target as the entity name, and an optional exact entity_id; that route has no limit or offset, so those are not applied to these query types (dead_code dispatches to POST /api/v0/code/dead-code): for a scoped token an entity outside the grant answers not found, and neighbours outside the grant, or with no repository, are omitted. Those responses carry outgoing_truncated and incoming_truncated; on the graph paths true means more neighbours exist in that direction than were returned, and on the content fallback it means a lookup reached its ceiling, so the list may be incomplete. Story query types require target or entity_id; route query types require target as the entity name (or entity_id); call_chain requires a start->end target or start_entity_id and end_entity_id; dead_code scans without one; calls missing the required selector are rejected.",
       "inputSchema": {
         "properties": {
           "context": {
@@ -1137,7 +1141,7 @@
       "name": "find_cross_repo_dead_code"
     },
     {
-      "description": "Find unused or ambiguous Terraform modules, Helm charts, Kustomize paths, Ansible roles, and Docker Compose services across an explicit set of canonical repository identifiers.",
+      "description": "Find unused or ambiguous Terraform modules, Helm charts, Kustomize paths, Ansible roles, and Docker Compose services across an explicit set of canonical repository identifiers. Provide repo_id or repo_ids; calls with neither are rejected.",
       "inputSchema": {
         "properties": {
           "families": {
@@ -1180,7 +1184,7 @@
       "name": "find_dead_iac"
     },
     {
-      "description": "Find AWS cloud resources from active reducer drift facts. The default page is limited to resources with no Terraform config owner or only Terraform state ownership; explicitly select image_version_drift or value_comparison_inconclusive to inspect managed value drift or degraded comparison evidence.",
+      "description": "Find AWS cloud resources from active reducer drift facts. The default page is limited to resources with no Terraform config owner or only Terraform state ownership; explicitly select image_version_drift or value_comparison_inconclusive to inspect managed value drift or degraded comparison evidence. Provide scope_id or account_id; calls with neither are rejected.",
       "inputSchema": {
         "properties": {
           "account_id": {
@@ -1407,6 +1411,9 @@
             "type": "string"
           }
         },
+        "required": [
+          "scope_kind"
+        ],
         "type": "object"
       },
       "name": "compose_replatforming_plan"
@@ -1971,7 +1978,7 @@
       "name": "execute_language_query"
     },
     {
-      "description": "Find the transitive call chain between two functions by following CALLS edges in the code graph. Returns shortest paths up to a configurable depth. Scoped tokens receive only chains whose every hop is in a granted repository; an ungranted repository selector is rejected.",
+      "description": "Find the transitive call chain between two functions by following CALLS edges in the code graph. Returns shortest paths up to a configurable depth. Scoped tokens receive only chains whose every hop is in a granted repository; an ungranted repository selector is rejected. Provide start or start_entity_id, and end or end_entity_id; calls missing either pair are rejected.",
       "inputSchema": {
         "properties": {
           "cross_repo": {
@@ -2321,7 +2328,7 @@
       "name": "get_graph_summary_packet"
     },
     {
-      "description": "Investigate deterministic cross-repository API contract impact without string similarity inference. HTTP provider evidence is supported; topic and grpc return explicit unsupported family states until deterministic projections land.",
+      "description": "Investigate deterministic cross-repository API contract impact without string similarity inference. HTTP provider evidence is supported; topic and grpc return explicit unsupported family states until deterministic projections land. Provide at least one of provider_repo_id, consumer_repo_id, repo_id, topic, or service_name; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "consumer_repo_id": {
@@ -2484,7 +2491,7 @@
       "name": "investigate_deployment_config"
     },
     {
-      "description": "Find all repos and resources affected by changing a target.",
+      "description": "Find all repos and resources affected by changing a target. target and target_type are both required.",
       "inputSchema": {
         "properties": {
           "limit": {
@@ -2511,7 +2518,8 @@
           }
         },
         "required": [
-          "target"
+          "target",
+          "target_type"
         ],
         "type": "object"
       },
@@ -2699,7 +2707,7 @@
       "name": "get_relationship_evidence"
     },
     {
-      "description": "Analyze a base/head diff or explicit changed files before editing or landing a change, returning bounded affected code, graph impact, missing evidence, and next calls.",
+      "description": "Analyze a base/head diff or explicit changed files before editing or landing a change, returning bounded affected code, graph impact, missing evidence, and next calls. Provide changed_paths with repo_id, changes with repo_id, target, service_name, or topic; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "base_ref": {
@@ -2819,7 +2827,7 @@
       "name": "analyze_pre_change_impact"
     },
     {
-      "description": "Build a read-only developer_change_plan.v1 artifact from a base/head diff or explicit changed files, returning ordered actions, risk, tests, missing evidence, and bounded next calls.",
+      "description": "Build a read-only developer_change_plan.v1 artifact from a base/head diff or explicit changed files, returning ordered actions, risk, tests, missing evidence, and bounded next calls. Provide changed_paths with repo_id, changes with repo_id, target, service_name, or topic; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "base_ref": {
@@ -2943,7 +2951,7 @@
       "name": "plan_developer_change"
     },
     {
-      "description": "List package registry package identities by package_id or ecosystem/name without inferring repository ownership; malformed rows are returned under identity_issues. Populated by the opt-in package_registry collector (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus registry credentials), so a default git-only deploy returns an empty page.",
+      "description": "List package registry package identities by package_id or ecosystem/name without inferring repository ownership; malformed rows are returned under identity_issues. Populated by the opt-in package_registry collector (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus registry credentials), so a default git-only deploy returns an empty page. Provide package_id or ecosystem; ecosystem is required when name is provided; calls with neither are rejected.",
       "inputSchema": {
         "properties": {
           "ecosystem": {
@@ -3087,7 +3095,7 @@
       "name": "explain_dependency_path"
     },
     {
-      "description": "Find the blast or change surface for a workload, cloud resource, or terraform module.",
+      "description": "Find the blast or change surface for a workload, cloud resource, or terraform module. Provide the target to analyze; target is required.",
       "inputSchema": {
         "properties": {
           "environment": {
@@ -3114,7 +3122,7 @@
       "name": "find_change_surface"
     },
     {
-      "description": "Investigate the code, repository, workload, infrastructure, and transitive impact surface for a service, module, resource, code topic, or changed path set in one bounded call.",
+      "description": "Investigate the code, repository, workload, infrastructure, and transitive impact surface for a service, module, resource, code topic, or changed path set in one bounded call. Provide at least one of target, service_name, workload_id, resource_id, module_id, topic, query, or changed_paths with repo_id; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "changed_paths": {
@@ -3395,7 +3403,7 @@
       "name": "list_cloud_resource_inventory"
     },
     {
-      "description": "List runtime drift findings for a bounded canonical scope across aws, gcp, and azure, aggregating reducer_multi_cloud_runtime_drift_finding (gcp, azure) and reducer_aws_cloud_runtime_drift_finding (aws) in one query. Filterable by provider, canonical cloud_resource_uid, and finding_kind; cloud_resource_uid filtering matches only gcp/azure findings. Returns provider, normalized identity, finding_kind, management_status, provider-neutral source state, and refusal-safety posture; an aws-origin finding's safety verdict is derived through the same classification list_aws_runtime_drift_findings uses, so the identical row never disagrees across the two tools. Unsafe findings are reported as rejected, not omitted. Unsupported on lightweight local runtime.",
+      "description": "List runtime drift findings for a bounded canonical scope across aws, gcp, and azure, aggregating reducer_multi_cloud_runtime_drift_finding (gcp, azure) and reducer_aws_cloud_runtime_drift_finding (aws) in one query. Filterable by provider, canonical cloud_resource_uid, and finding_kind; cloud_resource_uid filtering matches only gcp/azure findings. Returns provider, normalized identity, finding_kind, management_status, provider-neutral source state, and refusal-safety posture; an aws-origin finding's safety verdict is derived through the same classification list_aws_runtime_drift_findings uses, so the identical row never disagrees across the two tools. Unsafe findings are reported as rejected, not omitted. Unsupported on lightweight local runtime. Provide scope_id, account_id, project_id, or subscription_id; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "account_id": {
@@ -3452,7 +3460,7 @@
       "name": "list_cloud_runtime_drift_findings"
     },
     {
-      "description": "List package-native dependency edges by Package.uid or PackageVersion.uid without inferring repository ownership or runtime consumption. Populated by the opt-in package_registry collector (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus registry credentials), so a default git-only deploy returns an empty page.",
+      "description": "List package-native dependency edges by Package.uid or PackageVersion.uid without inferring repository ownership or runtime consumption. Populated by the opt-in package_registry collector (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus registry credentials), so a default git-only deploy returns an empty page. Provide package_id or version_id; calls with neither are rejected.",
       "inputSchema": {
         "properties": {
           "after_dependency_id": {
@@ -3484,7 +3492,7 @@
       "name": "list_package_registry_dependencies"
     },
     {
-      "description": "List reducer-owned package ownership candidates, publication evidence, and manifest-backed consumption correlations by package_id or repository_id. A correlation persists only after the opt-in package_registry collector populates registry identities to correlate against (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus registry credentials), so a default git-only deploy returns an empty page.",
+      "description": "List reducer-owned package ownership candidates, publication evidence, and manifest-backed consumption correlations by package_id or repository_id. A correlation persists only after the opt-in package_registry collector populates registry identities to correlate against (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus registry credentials), so a default git-only deploy returns an empty page. Provide package_id or repository_id; calls with neither are rejected.",
       "inputSchema": {
         "properties": {
           "after_correlation_id": {
@@ -3675,7 +3683,7 @@
       "name": "get_package_registry_package_inventory"
     },
     {
-      "description": "List reducer-owned CI/CD run, artifact, and environment correlations by run, repository, commit, artifact digest, image reference, or environment. Repository-scoped results include an evidence_summary that separates static workflow files, live run rows, run-to-artifact/image bridge evidence, and public-safe missing-hop classes. Live run rows come from the opt-in ci_cd_run collector polling the provider run API such as GitHub Actions (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus a provider token), so a default git-only deploy returns only static workflow evidence and no run correlation rows.",
+      "description": "List reducer-owned CI/CD run, artifact, and environment correlations by run, repository, commit, artifact digest, image reference, or environment. Repository-scoped results include an evidence_summary that separates static workflow files, live run rows, run-to-artifact/image bridge evidence, and public-safe missing-hop classes. Live run rows come from the opt-in ci_cd_run collector polling the provider run API such as GitHub Actions (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus a provider token), so a default git-only deploy returns only static workflow evidence and no run correlation rows. Provide at least one of scope_id, repository_id, commit_sha, provider_run_id, artifact_digest, image_ref, or environment; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_correlation_id": {
@@ -3859,7 +3867,7 @@
       "name": "get_ci_cd_run_correlation_inventory"
     },
     {
-      "description": "List reducer-owned service catalog ownership and drift correlations by entity, repository, service, workload, owner, or scope, including repository-local descriptor evidence and external confirmation state.",
+      "description": "List reducer-owned service catalog ownership and drift correlations by entity, repository, service, workload, owner, or scope, including repository-local descriptor evidence and external confirmation state. Provide at least one of scope_id, entity_ref, repository_id, service_id, workload_id, or owner_ref; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_correlation_id": {
@@ -3958,7 +3966,7 @@
       "name": "list_codeowners_ownership"
     },
     {
-      "description": "List reducer-owned Kubernetes workload ownership and drift correlations by cluster, workload object, namespace, image reference, source digest, or scope.",
+      "description": "List reducer-owned Kubernetes workload ownership and drift correlations by cluster, workload object, namespace, image reference, source digest, or scope. Provide at least one of scope_id, cluster_id, workload_object_id, namespace, image_ref, or source_digest; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_correlation_id": {
@@ -4018,7 +4026,7 @@
       "name": "list_kubernetes_correlations"
     },
     {
-      "description": "List reducer-owned secrets/IAM identity trust chains (workload to ServiceAccount to IAM role to Vault policy) by scope, chain, workload object, service account join key, or IAM role fingerprint. State is one of exact, partial, unresolved, stale, permission_hidden, or unsupported; only exact chains have every hop resolved with explicit evidence.",
+      "description": "List reducer-owned secrets/IAM identity trust chains (workload to ServiceAccount to IAM role to Vault policy) by scope, chain, workload object, service account join key, or IAM role fingerprint. State is one of exact, partial, unresolved, stale, permission_hidden, or unsupported; only exact chains have every hop resolved with explicit evidence. Provide at least one of scope_id, chain_id, workload_object_id, service_account_join_key, or iam_role_fingerprint; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_chain_id": {
@@ -4069,7 +4077,7 @@
       "name": "list_secrets_iam_identity_trust_chains"
     },
     {
-      "description": "List reducer-owned secrets/IAM privilege posture observations: risky broad or partial posture evidence (for example a role with external trust and no sts:ExternalId) that the reducer keeps provenance-only and never promotes to an exact path. Filter by scope, observation, risk type, severity, or state.",
+      "description": "List reducer-owned secrets/IAM privilege posture observations: risky broad or partial posture evidence (for example a role with external trust and no sts:ExternalId) that the reducer keeps provenance-only and never promotes to an exact path. Filter by scope, observation, risk type, severity, or state. Provide scope_id or observation_id; calls with neither are rejected.",
       "inputSchema": {
         "properties": {
           "after_observation_id": {
@@ -4115,7 +4123,7 @@
       "name": "list_secrets_iam_privilege_posture_observations"
     },
     {
-      "description": "List reducer-owned secrets/IAM secret access paths: Vault policy-to-KV metadata paths reported only as reachable from an exact identity chain, as fingerprints and capabilities, never as secret values. Filter by scope, path, parent chain, vault mount join key, or state.",
+      "description": "List reducer-owned secrets/IAM secret access paths: Vault policy-to-KV metadata paths reported only as reachable from an exact identity chain, as fingerprints and capabilities, never as secret values. Filter by scope, path, parent chain, vault mount join key, or state. Provide at least one of scope_id, path_id, chain_id, or vault_mount_join_key; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_path_id": {
@@ -4161,7 +4169,7 @@
       "name": "list_secrets_iam_secret_access_paths"
     },
     {
-      "description": "List reducer-owned secrets/IAM posture gaps: missing, stale, permission_hidden, or unsupported evidence that blocks exact trust-chain truth, surfaced rather than silently dropped. Filter by scope, gap, gap type, service account join key, or state.",
+      "description": "List reducer-owned secrets/IAM posture gaps: missing, stale, permission_hidden, or unsupported evidence that blocks exact trust-chain truth, surfaced rather than silently dropped. Filter by scope, gap, gap type, service account join key, or state. Provide at least one of scope_id, gap_id, or service_account_join_key; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_gap_id": {
@@ -4223,7 +4231,7 @@
       "name": "count_secrets_iam_posture"
     },
     {
-      "description": "List reducer-owned observability coverage correlations: whether a monitored cloud resource or service has alarm, dashboard, log, or trace coverage, and which coverage gaps remain, by scope, provider, coverage signal, observability object, target resource, or target service.",
+      "description": "List reducer-owned observability coverage correlations: whether a monitored cloud resource or service has alarm, dashboard, log, or trace coverage, and which coverage gaps remain, by scope, provider, coverage signal, observability object, target resource, or target service. Provide at least one of scope_id, provider, coverage_signal, observability_object_ref, target_uid, or target_service_ref; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_correlation_id": {
@@ -4322,7 +4330,7 @@
       "name": "get_vulnerability_scanner_read_contract"
     },
     {
-      "description": "List reducer-owned container image identity facts by digest, image reference, source repository bridge, OCI repository, or outcome. Populated by the opt-in oci_registry collector (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus container-registry credentials), so a default git-only deploy returns an empty page.",
+      "description": "List reducer-owned container image identity facts by digest, image reference, source repository bridge, OCI repository, or outcome. Populated by the opt-in oci_registry collector (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus container-registry credentials), so a default git-only deploy returns an empty page. Provide at least one of digest, image_ref, source_repository_id, repository_id, or outcome; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_identity_id": {
@@ -4404,7 +4412,7 @@
       "name": "list_container_image_tag_history"
     },
     {
-      "description": "List reducer-owned vulnerability impact findings by CVE, package, repository, image digest, or impact status. The default precise profile requires supported exact-version evidence such as npm, Maven, Cargo, Pub pubspec.lock, NuGet, or Swift Package.resolved. Each row carries `vulnerable_range`, a reachability envelope with states such as reachable, not_called, unknown, unavailable, and missing_evidence, and an advisory-only remediation block (issue #595). Reachability does not change impact truth; JavaScript/TypeScript parser/SCIP package API evidence is partial prioritization evidence, and not_called is emitted only when an ecosystem-specific scanner proves stronger semantics. Exact Kubernetes digest-runtime evidence includes `kubernetes_runtime_workload_refs` plus `kubernetes_runtime_probe.candidate_limit`, bounded across the serialized page to 200 refs; repeated findings share that budget while every eligible finding retains at least one exact ref. Nullable `workload_refs_truncated` never discloses hidden scoped candidates. Suppression decisions (VEX, operator-policy, provider dismissal evidence) are attached to each row; set include_suppressed=true to surface findings hidden by operator suppression and use suppression_state to filter by a specific decision. Findings are seeded by the opt-in vulnerability_intelligence and security_alert collectors (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus advisory-feed or provider credentials), so a default git-only deploy returns an empty page whose readiness envelope reports not_configured rather than a false fresh-zero.",
+      "description": "List reducer-owned vulnerability impact findings by CVE, package, repository, image digest, or impact status. The default precise profile requires supported exact-version evidence such as npm, Maven, Cargo, Pub pubspec.lock, NuGet, or Swift Package.resolved. Each row carries `vulnerable_range`, a reachability envelope with states such as reachable, not_called, unknown, unavailable, and missing_evidence, and an advisory-only remediation block (issue #595). Reachability does not change impact truth; JavaScript/TypeScript parser/SCIP package API evidence is partial prioritization evidence, and not_called is emitted only when an ecosystem-specific scanner proves stronger semantics. Exact Kubernetes digest-runtime evidence includes `kubernetes_runtime_workload_refs` plus `kubernetes_runtime_probe.candidate_limit`, bounded across the serialized page to 200 refs; repeated findings share that budget while every eligible finding retains at least one exact ref. Nullable `workload_refs_truncated` never discloses hidden scoped candidates. Suppression decisions (VEX, operator-policy, provider dismissal evidence) are attached to each row; set include_suppressed=true to surface findings hidden by operator suppression and use suppression_state to filter by a specific decision. Findings are seeded by the opt-in vulnerability_intelligence and security_alert collectors (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus advisory-feed or provider credentials), so a default git-only deploy returns an empty page whose readiness envelope reports not_configured rather than a false fresh-zero. Provide at least one of cve_id, advisory_id, package_id, repository_id, subject_digest, image_ref, impact_status, ecosystem, workload_id, service_id, environment, severity, priority_bucket, or min_priority_score above zero; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "advisory_id": {
@@ -4550,7 +4558,7 @@
       "name": "list_supply_chain_impact_findings"
     },
     {
-      "description": "List source-only advisory evidence by CVE, advisory, package, repository, service, or workload. Repository/service/workload scopes derive advisory anchors from reducer-owned impact findings only; provider-alert-only rows are not promoted into owned vulnerability truth.",
+      "description": "List source-only advisory evidence by CVE, advisory, package, repository, service, or workload. Repository/service/workload scopes derive advisory anchors from reducer-owned impact findings only; provider-alert-only rows are not promoted into owned vulnerability truth. Provide at least one of cve_id, advisory_id, package_id, repository_id, service_id, or workload_id; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "advisory_id": {
@@ -4598,7 +4606,7 @@
       "name": "list_advisory_evidence"
     },
     {
-      "description": "Explain one reducer-owned vulnerability finding or bounded advisory/package/repository/image/workload/service path with evidence, anchors, remediation, freshness, missing-evidence reasons, and ambiguous-scope refusal envelopes. Exact Kubernetes digest-runtime evidence includes bounded `kubernetes_runtime_workload_refs` plus `kubernetes_runtime_probe.candidate_limit`; nullable `workload_refs_truncated` never discloses hidden scoped candidates. The remediation block reports current observed version, vulnerable range, first patched version, whether the manifest range admits that fix, direct/transitive designation, parent package needed for a transitive upgrade, and an exact/partial/unknown confidence. Remediation is strictly advisory; Eshu does not auto-open pull requests.",
+      "description": "Explain one reducer-owned vulnerability finding or bounded advisory/package/repository/image/workload/service path with evidence, anchors, remediation, freshness, missing-evidence reasons, and ambiguous-scope refusal envelopes. Exact Kubernetes digest-runtime evidence includes bounded `kubernetes_runtime_workload_refs` plus `kubernetes_runtime_probe.candidate_limit`; nullable `workload_refs_truncated` never discloses hidden scoped candidates. The remediation block reports current observed version, vulnerable range, first patched version, whether the manifest range admits that fix, direct/transitive designation, parent package needed for a transitive upgrade, and an exact/partial/unknown confidence. Remediation is strictly advisory; Eshu does not auto-open pull requests. Provide finding_id, or advisory_id/cve_id plus one of package_id, repository_id, subject_digest, image_ref, workload_id, or service_id; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "advisory_id": {
@@ -4643,7 +4651,7 @@
       "name": "explain_supply_chain_impact"
     },
     {
-      "description": "List reducer-owned provider security alert reconciliations by repository, provider, package, CVE, or GHSA anchor while keeping provider state separate from Eshu impact state. Rows expose Eshu-owned package evidence under eshu_package, including observed_version and missing_evidence, and include reason_code plus structured missing_evidence details for provider_only, stale, unsupported, and ambiguous outcomes. An unmatched row written after the reducer stopped waiting for impact evidence carries impact_wait_outcome (gave_up_unmatched or gave_up_bound_exceeded); a genuine no-match, where the impact work succeeded and found nothing, has no impact_wait_outcome. Rows written by a pre-#8956 binary (including mid rolling deploy) carry no impact_wait_outcome either, so an untagged unmatched row from such a generation is not proof of a genuine no-match. Built from provider alert facts emitted by the opt-in security_alert collector (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus provider credentials), so a default git-only deploy returns an empty page. An empty page reports coverage.state (complete, target_incomplete, or not_configured) and coverage.reasons naming why it is not complete: collector not configured, repository outside every target, still collecting, a terminal fetch failure, the collector did not read the repository of an organization target in full (org_repository_* reasons), no authorized repositories, or the collector state could not be read. Without repository_id, complete reports configured-target health only and says nothing about whether a particular repository is inside a target; anchor by repository_id for repository coverage. A scoped token with no grants gets not_configured with reason no_authorized_repositories. A zero-row answer is clean only when coverage.state is complete and the reducer's security_alert_reconciliation domain has no pending or dead-lettered work for the scope (get_freshness_causality).",
+      "description": "List reducer-owned provider security alert reconciliations by repository, provider, package, CVE, or GHSA anchor while keeping provider state separate from Eshu impact state. Rows expose Eshu-owned package evidence under eshu_package, including observed_version and missing_evidence, and include reason_code plus structured missing_evidence details for provider_only, stale, unsupported, and ambiguous outcomes. An unmatched row written after the reducer stopped waiting for impact evidence carries impact_wait_outcome (gave_up_unmatched or gave_up_bound_exceeded); a genuine no-match, where the impact work succeeded and found nothing, has no impact_wait_outcome. Rows written by a pre-#8956 binary (including mid rolling deploy) carry no impact_wait_outcome either, so an untagged unmatched row from such a generation is not proof of a genuine no-match. Built from provider alert facts emitted by the opt-in security_alert collector (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus provider credentials), so a default git-only deploy returns an empty page. An empty page reports coverage.state (complete, target_incomplete, or not_configured) and coverage.reasons naming why it is not complete: collector not configured, repository outside every target, still collecting, a terminal fetch failure, the collector did not read the repository of an organization target in full (org_repository_* reasons), no authorized repositories, or the collector state could not be read. Without repository_id, complete reports configured-target health only and says nothing about whether a particular repository is inside a target; anchor by repository_id for repository coverage. A scoped token with no grants gets not_configured with reason no_authorized_repositories. A zero-row answer is clean only when coverage.state is complete and the reducer's security_alert_reconciliation domain has no pending or dead-lettered work for the scope (get_freshness_causality). Provide at least one of repository_id, provider, package_id, cve_id, or ghsa_id; provider_state and reconciliation_status are filters only; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_reconciliation_id": {
@@ -4707,7 +4715,7 @@
       "name": "list_security_alert_reconciliations"
     },
     {
-      "description": "List reducer-owned SBOM and attestation attachment evidence by repository, workload, service, image digest, or document identity. Inspect attachment_scope and missing_evidence before treating parse-only rows as image evidence. SBOM component evidence is bounded to 100 deduplicated rows per document; component_count remains the full pre-cap count and component_evidence_truncated reports overflow. SBOM warning summaries are returned as a bounded preview with aggregate warning_summary_count and warning_summaries_truncated. Each row also carries dependency_relationships (declared dependency edges between components) and external_references (advisory/website/VCS links), each bounded to a write-time cap per document with an honest dependency_relationship_count/external_reference_count and a _truncated flag when the cap was hit; these are declared-evidence rows, not resolved graph truth, so a from/to/component id may not match an indexed component. Each row also carries slsa_provenance_predicate_type and slsa_provenance_builder_id joined from a matching attestation.slsa_provenance fact (empty when none joined). Populated by the opt-in sbom_attestation collector (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus SBOM document URLs or OCI referrer credentials), so a default git-only deploy returns an empty page.",
+      "description": "List reducer-owned SBOM and attestation attachment evidence by repository, workload, service, image digest, or document identity. Inspect attachment_scope and missing_evidence before treating parse-only rows as image evidence. SBOM component evidence is bounded to 100 deduplicated rows per document; component_count remains the full pre-cap count and component_evidence_truncated reports overflow. SBOM warning summaries are returned as a bounded preview with aggregate warning_summary_count and warning_summaries_truncated. Each row also carries dependency_relationships (declared dependency edges between components) and external_references (advisory/website/VCS links), each bounded to a write-time cap per document with an honest dependency_relationship_count/external_reference_count and a _truncated flag when the cap was hit; these are declared-evidence rows, not resolved graph truth, so a from/to/component id may not match an indexed component. Each row also carries slsa_provenance_predicate_type and slsa_provenance_builder_id joined from a matching attestation.slsa_provenance fact (empty when none joined). Populated by the opt-in sbom_attestation collector (off in a default deploy; enable with ESHU_COLLECTOR_INSTANCES_JSON plus SBOM document URLs or OCI referrer credentials), so a default git-only deploy returns an empty page. Provide at least one of subject_digest, document_id, document_digest, repository_id, workload_id, or service_id; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_attachment_id": {
@@ -5296,7 +5304,7 @@
       "name": "count_sbom_attestation_attachments"
     },
     {
-      "description": "Return a paginated grouped count of reducer-owned SBOM and attestation attachments along one dimension (attachment_status, artifact_kind, subject_digest). Replaces the page-and-iterate caller pattern for ecosystem-level inventory questions.",
+      "description": "Return a paginated grouped count of reducer-owned SBOM and attestation attachments along one dimension (attachment_status, artifact_kind, subject_digest). Replaces the page-and-iterate caller pattern for ecosystem-level inventory questions. Provide at least one of subject_digest, document_id, document_digest, repository_id, workload_id, or service_id; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "artifact_kind": {
@@ -5418,7 +5426,7 @@
       "name": "get_incident_context"
     },
     {
-      "description": "List bounded Jira/work-item source evidence by scope, project, work-item key, provider issue id, URL fingerprint, external URL, or observed-after window. Evidence remains source-only and does not verify pull request, commit, deployment, runtime artifact, image, version, service, or incident truth.",
+      "description": "List bounded Jira/work-item source evidence by scope, project, work-item key, provider issue id, URL fingerprint, external URL, or observed-after window. Evidence remains source-only and does not verify pull request, commit, deployment, runtime artifact, image, version, service, or incident truth. Provide at least one of scope_id, project_key, work_item_key, provider_work_item_id, external_url, url_fingerprint, or observed_after; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "after_fact_id": {
@@ -6491,7 +6499,7 @@
       "name": "export_deployable_unit_packet"
     },
     {
-      "description": "Export an investigation_evidence_packet.v2 artifact for bounded runtime drift findings across aws, gcp, and azure. Reads the same aggregated store list_cloud_runtime_drift_findings does (reducer_multi_cloud_runtime_drift_finding merged with reducer_aws_cloud_runtime_drift_finding), so provider=aws and an unfiltered query both include real AWS findings, with the same safety verdict list_cloud_runtime_drift_findings and list_aws_runtime_drift_findings report for the same row. The packet preserves source-state, safety/refusal posture, missing evidence, and reproduce handles for a canonical cloud scope.",
+      "description": "Export an investigation_evidence_packet.v2 artifact for bounded runtime drift findings across aws, gcp, and azure. Reads the same aggregated store list_cloud_runtime_drift_findings does (reducer_multi_cloud_runtime_drift_finding merged with reducer_aws_cloud_runtime_drift_finding), so provider=aws and an unfiltered query both include real AWS findings, with the same safety verdict list_cloud_runtime_drift_findings and list_aws_runtime_drift_findings report for the same row. The packet preserves source-state, safety/refusal posture, missing evidence, and reproduce handles for a canonical cloud scope. Provide scope_id, account_id, project_id, or subscription_id; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "account_id": {
@@ -6534,7 +6542,7 @@
       "name": "export_cloud_runtime_drift_packet"
     },
     {
-      "description": "List opt-in LLM-assisted documentation observations with truth basis, freshness, provider profile, prompt version, redaction version, and policy state.",
+      "description": "List opt-in LLM-assisted documentation observations with truth basis, freshness, provider profile, prompt version, redaction version, and policy state. Provide at least one of scope_id, repo, provider_profile_id, source, subject, status, freshness, or fact_id; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "admission_state": {
@@ -6622,7 +6630,7 @@
       "name": "list_semantic_documentation_observations"
     },
     {
-      "description": "List opt-in non-canonical code hints with truth basis, freshness, provider profile, prompt version, redaction version, policy state, and corroboration state.",
+      "description": "List opt-in non-canonical code hints with truth basis, freshness, provider profile, prompt version, redaction version, policy state, and corroboration state. Provide at least one of scope_id, repo, provider_profile_id, source, subject, status, freshness, or fact_id; calls with none are rejected.",
       "inputSchema": {
         "properties": {
           "corroboration_state": {
@@ -7529,7 +7537,7 @@
       "name": "search_dockerfile_installs"
     },
     {
-      "description": "Find repositories declaring a PHP directive or server mode in committed PHP/Apache configuration. Returns only guarded structured evidence with file and line; raw configuration bodies are withheld.",
+      "description": "Find repositories declaring a PHP directive or server mode in committed PHP/Apache configuration. Returns only guarded structured evidence with file and line; raw configuration bodies are withheld. Supply a non-empty directive or mode; other requests are rejected.",
       "inputSchema": {
         "properties": {
           "cursor": {
