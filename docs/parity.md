@@ -153,6 +153,35 @@ it; a malformed or non-positive value fails the boot).
   `sse_session_ceiling_reached` (process ceiling) and the limit, never the
   principal.
 
+## Required-argument wire shape (eshu-hq/eshu-mcp#61)
+
+Deliberate divergence from the source census, not a parity break. The
+source schemas omit arguments core handlers unconditionally require, and
+the destination forwards the omission: core answers those calls with a
+plain-text HTTP 400 (`{"error","detail"}`, never the canonical envelope),
+which the dispatcher renders as `HTTP 400: ...` text, while route-level
+refusals render as plain `<arg> is required` text. Neither reaches the
+canonical `mcp_router_invalid_arguments` envelope, which only router-side
+schema validation produces.
+
+- Unconditional single requirements now live in the declared schemas, so
+  `call_tool` answers the envelope without dispatching: `find_blast_radius`
+  requires `target_type` (core `impact/blast_radius.go` rejects an empty
+  one), and `compose_replatforming_plan` requires `scope_kind` (core
+  `replatforming_plan_handler.go` rejects a missing or unsupported one and
+  the OpenAPI spec lists it schema-level `required`). No other tool has a
+  schema-level core requirement its schema omits: every remaining gap is an
+  anyOf anchor group the schema cannot express (the OpenAI MCP contract
+  test forbids a top-level anyOf/oneOf), a conditional target, or a
+  dispatcher-defaulted limit the handler never sees missing.
+- The anyOf and conditional requirements live in the tool descriptions as
+  the edge contract (e.g. "Provide scope_id or account_id"), proved
+  against the handler refusal texts in `go/internal/query` at the source
+  commit and pinned by `TestDeliberateSelectorContractText`; the
+  route-builder refusals are pinned by
+  `TestResolveRouteRefusesMissingSelector`, and the envelope by the
+  `call_tool` tests in `internal/router/call_invalid_arguments_test.go`.
+
 ## NOT_CHECKED
 
 Live MCP calls against deployed artifacts, QA EKS proof, concurrent
