@@ -1,82 +1,93 @@
 # eshu-mcp
 
-Eshu MCP protocol handling and tool dispatch. Pre-release: holds no cutover
-authority until its reviewed cutover. Refs #8873, part of #6707.
+Status: pre-release. You can build and run it today, but don't treat it
+as the final production setup yet.
 
-## Scope
+`eshu-mcp` lets AI assistants use Eshu as tools. MCP (Model Context
+Protocol) is the standard way assistants call tools, where a tool is one
+named action like "find this code" or "list repositories". Eshu maps
+code and cloud systems into a graph, and this server puts that map
+behind MCP over HTTP: your assistant calls a tool, we turn it into a
+read against the Eshu core, and the result comes back in MCP shape. This
+repo owns the tool registry, the protocol handling, and dispatch. The
+core owns the data and decides who's allowed in. We import no core
+storage code and reach the core only over HTTP.
 
-This repository owns MCP protocol handling, tool registration, dispatch, and
-adaptation to supported read contracts, served as versioned read-contract
-clients.
+```mermaid
+flowchart LR
+    U[AI assistant / MCP client] -->|MCP over HTTP + SSE| M[eshu-mcp<br/>this repo]
+    M -->|HTTP reads| C[Eshu core]
+    C --> G[(Graph and durable stores)]
+```
 
-Core-owned and staying in `eshu`: read-model implementation, canonical graph
-projection, durable stores, producer admission authority, redaction policy,
-and the in-tree `mcp-server` composition root (including the Postgres-backed
-runtime surface). This repository never imports core implementation handles;
-at cutover it replaces `wiring_router.go`-style composition with versioned
-HTTP read-contract clients.
+In short: your client connects here, lists tools, and calls one. We
+forward your credential to the core with each call, and the core has the
+final say on access.
 
-Adapters stay separate repositories. Shared response and result shapes get
-one explicit public contract with a single publisher, never whichever adapter
-imports them first. See
-[shared shapes](contracts/shared-shapes/v1/SHARED_SHAPES.md).
+## Is this the repo you want?
 
-## Compatibility
+Use it to run the MCP server as its own process, to work on tool
+definitions or result shapes, or to connect an editor or agent to Eshu
+over HTTP.
 
-This repository is the authoritative publisher of the 171-tool MCP
-registry (arbiter ruling recorded on `eshu-hq/eshu#9498`). Core (`eshu`)
-publishes only the HTTP/OpenAPI contract this repository consumes; any
-tool add/remove/rename must land here with a contract test against core
-OpenAPI (forward rule — `scripts/check-parity.py` covers in-repo
-count/order/pins only; the core-OpenAPI gate does not exist yet).
+Skip it when you want terminal commands (use `eshu-cli`), the plain HTTP
+API (use `eshu-api` or the core), changes to stored data or access rules
+(the core again), or one command for the whole stack (see
+[eshu-deploy](https://github.com/eshu-hq/eshu-deploy)).
 
-| Dest | Core | Provenance |
-|---|---|---|
-| `0.2.9` (`sha256:a3fbe4…`) | `50a0ddd3335422c0454be75c9a160a4083a799b7` (image `sha256:6a7966…`) | `docs/qa/0.2.9-parity-20261103.md` (transport/auth/envelope + rollback, 2026-11-03) |
+## Quickstart
 
-Oldest supported = newest supported = the row above. No N-1/N+1 blanket
-claim. Widen the window only by adding a proven row, never by inference.
-The router-surface/ranker delta (blocker 3 on `eshu-hq/eshu#9521`) stays
-open and is out of scope of this row: this row proves the deployed
-transport, auth gates, hostile shapes, and router find/call path only.
-This section supersedes the open questions in
-`docs/source/CUTOVER_OWNERSHIP.md`, which stays byte-exact as the pinned
-verbatim source copy (parity-gated) and cannot carry the ruling itself.
+You'll need Go 1.26.10 (see `go.mod`) and a running core. The shared key
+below is the simplest of the three credential options.
 
-## Layout
+```bash
+go build -o /tmp/eshu-mcp ./cmd/eshu-mcp
+ESHU_API_KEY='change-me' /tmp/eshu-mcp --core-base-url http://localhost:8080
+curl -s http://localhost:8080/health
+curl -s http://localhost:8080/healthz
+```
 
-- `contracts/tool-registry/v1/tools.json`: versioned tool-contract surface.
-  171 registry tools in source registration order, plus the router surface,
-  dispatch bounds, and envelope MIME. Order is contractual.
-- `contracts/shared-shapes/v1/SHARED_SHAPES.md`: the shared envelope/result
-  shapes and their single-publisher rule.
-- `docs/source/CUTOVER_OWNERSHIP.md`: verbatim copy of the source ownership
-  map at the pinned source commit. Byte-parity is proven in
-  [parity](docs/parity.md).
-- `docs/provenance.md`: source commit, file mapping, and hashes.
-- `docs/parity.md`: parity method and seed-time results.
-- `docs/skeleton.md`: the walking-skeleton server, its proof, and what stays
-  unchecked.
-- `docs/operations.md`: operator note on the per-principal SSE session
-  limit (32; everyone behind the shared key shares it). Read before a
-  re-pin to v0.2.8 or later.
-- `docs/release.md`: tag `v*` and `main`-push release to GHCR with
-  provenance, SBOM, and Trivy gate (see `.github/workflows/release.yml`).
-- `registry.go` (module root): the served registry, embedded from the
-  tool-contract surface.
-- `internal/readcontract/`: the versioned HTTP read-contract client seam.
-- `cmd/eshu-mcp/`: the binary serving `GET /healthz` plus the MCP
-  transport routes (`GET /health`, `GET /sse`, `POST /mcp/message`) over
-  the 171-tool registry.
+`--core-base-url` is required, and with no credential source set the
+server refuses to start. That refusal is deliberate.
+[Configuration](docs/reference/configuration.md) walks through your options. When
+`/health` answers `{"status":"ok"}` and `/healthz` shows a non-zero
+tool count, point your client at `GET /sse` and `POST /mcp/message`
+with an `Authorization: Bearer <token>` header on both.
 
-## Checks
+## Documentation
 
-Run `python3 scripts/check-parity.py`. CI runs the same check on every push
-and pull request. The in-tree implementation is removed only after production
-acceptance.
+| Guide | What you will find |
+| --- | --- |
+| [Documentation index](docs/README.md) | The map of every page below |
+| [Getting started](docs/getting-started/README.md) | Run the server and connect your first client |
+| [Guides](docs/guides/README.md) | Operate, auth setup, and troubleshooting, step by step |
+| [Concepts](docs/concepts/README.md) | Where this sits, how a tool call travels, surfaces and result shapes |
+| [Configuration reference](docs/reference/configuration.md) | Every flag and env var, and the three ways to give it a credential |
+| [Architecture](docs/architecture/README.md) | Place in Eshu, components, and stack |
+| [Diagrams](docs/diagrams/README.md) | Every diagram, with captions and text versions |
+| [Operating: SSE session limits](docs/operations.md) | Session caps, refusal shape, and what to watch — read before a shared-key deploy |
+| [What this build serves](docs/skeleton.md) | Scope of the current build |
+| [Release](docs/release.md) | Tags, images, and how to check a published digest |
+| [Tool registry contract](contracts/tool-registry/v1/tools.json) | The 171 tools, in contract order, with pinned read bounds |
+| [Shared shapes](contracts/shared-shapes/v1/SHARED_SHAPES.md) | Wire shapes shared with the other Eshu surfaces |
+| Maintainer history: [parity](docs/parity.md), [provenance](docs/provenance.md), [cutover ownership](docs/source/CUTOVER_OWNERSHIP.md), and QA notes in `docs/qa/` | What moved where, source pins, and parity evidence |
 
-Path-aware gates (`go-ci / lint`, `go-ci / test`, `go-ci / race`,
-`go-ci / shell`, `go-ci / image`, `go-ci / govulncheck`, `go-ci / gosec`,
-plus the top-level `ci-complete` alias) run from
-`.github/workflows/ci.yml`; `make ci` is
-the local parity command. See [CONTRIBUTING.md](CONTRIBUTING.md).
+## Related repos
+
+`eshu` holds the core. `eshu-api` is the HTTP front door, `eshu-cli` is
+the command line (its `mcp setup` command can write client config for
+you), and [eshu-deploy](https://github.com/eshu-hq/eshu-deploy) runs the
+full stack.
+
+## Development
+
+`make ci` runs the same checks as CI (vet, lint, fmt, tidy, cap, build,
+test, race). It needs `golangci-lint` v2.12.2, and Go files stay at or
+under 500 lines.
+
+## Contributing, security, and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the local checks. There's no
+`SECURITY.md` or `LICENSE` file here. If you find a security issue,
+please tell the maintainers privately rather than opening a public
+issue. And never commit credentials.
