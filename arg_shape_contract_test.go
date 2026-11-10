@@ -54,6 +54,7 @@ func TestDeliberateSelectorContractText(t *testing.T) {
 		// Pre-existing deliberate text, pinned against rewording.
 		"get_repo_summary":                 "Provide exactly one of repo_id",
 		"get_service_story":                "one of service_id, workload_id, or service_name",
+		"list_service_api_endpoints":       "one of service_id, workload_id, or service_name",
 		"get_service_intelligence_report":  "one of service_id, workload_id, or service_name",
 		"investigate_service":              "service_id or service_name",
 		"search_registry_bundles":          "non-empty query or ecosystem scope",

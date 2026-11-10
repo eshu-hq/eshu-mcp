@@ -8,9 +8,9 @@ translation. The picture is in [Diagrams](../diagrams/README.md).
 
 ## We own
 
-- The tool registry: 171 tools, names and order pinned in
+- The tool registry: 172 tools, names and order pinned in
   [tools.json](../../contracts/tool-registry/v1/tools.json) (contract
-  `v1`, `registry.tool_count: 171`), embedded at build time. If that
+  `v1`, `registry.tool_count: 172`), embedded at build time. If that
   file fails to load, the server refuses to start rather than
   cheerfully serving health with zero tools.
 - The protocol handling: `GET /sse`, `POST /mcp/message`,

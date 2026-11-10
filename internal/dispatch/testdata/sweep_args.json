@@ -1723,6 +1723,21 @@
           "limit": 5
         }
       }
+    ],
+    "list_service_api_endpoints": [
+      {
+        "label": "default",
+        "arguments": {
+          "workload_id": "sweep-seed-missing"
+        },
+        "accept": [
+          "ok",
+          "not_found",
+          "scope_not_found",
+          "service_not_found"
+        ],
+        "acceptReason": "workload_id sweep-seed-missing is not a seeded workload"
+      }
     ]
   }
 }

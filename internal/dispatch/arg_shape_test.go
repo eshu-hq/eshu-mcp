@@ -34,6 +34,7 @@ func TestResolveRouteRefusesMissingSelector(t *testing.T) {
 		"get_service_context":                           "get_service_context requires workload_id",
 		"get_service_intelligence_report":               "get_service_intelligence_report requires service_id, workload_id, or service_name",
 		"get_service_story":                             "get_service_story requires service_id, workload_id, or service_name",
+		"list_service_api_endpoints":                    "list_service_api_endpoints requires service_id, workload_id, or service_name",
 		"get_workload_context":                          "workload_id is required",
 		"get_workload_story":                            "workload_id is required",
 		"investigate_service":                           "investigate_service requires service_id or service_name",
@@ -42,8 +43,8 @@ func TestResolveRouteRefusesMissingSelector(t *testing.T) {
 		"list_reducer_input_invalid_facts":              "scope_id is required",
 		"list_repository_files":                         "repo_id is required",
 	}
-	if len(cases) != 22 {
-		t.Fatalf("refusal table has %d tools, want the 22 honest-error refusals", len(cases))
+	if len(cases) != 23 {
+		t.Fatalf("refusal table has %d tools, want the 23 honest-error refusals", len(cases))
 	}
 	for tool, want := range cases {
 		route, err := ResolveRoute(tool, map[string]any{})

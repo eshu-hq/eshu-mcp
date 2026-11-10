@@ -309,6 +309,9 @@
     "list_security_alert_reconciliations": {},
     "list_semantic_code_hints": {},
     "list_semantic_documentation_observations": {},
+    "list_service_api_endpoints": {
+      "service_id": "<service_id>"
+    },
     "list_service_catalog_correlations": {},
     "list_ssm_host_inventory": {},
     "list_supply_chain_impact_findings": {},
@@ -5744,6 +5747,10 @@
       "description": "Alias for workload context that accepts service workload selectors through workload_id.",
       "inputSchema": {
         "properties": {
+          "downstream_read_limit": {
+            "description": "Indirect-evidence row bound for the dependents and consumer_repositories reads. Defaults to 25 when absent; clamps into (0, 100], and the effective bound is echoed on result_limits.downstream_read_limit and the investigation coverage. Raise it (at most 100) to recover a truncated fan-out in one re-call instead of paging.",
+            "type": "integer"
+          },
           "environment": {
             "description": "Optional environment context",
             "type": "string"
@@ -5772,6 +5779,10 @@
       "description": "Get the one-call service dossier for a service: identity, API surface, deployment lanes, dependencies, consumers, and evidence graph. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories, so two same-named services in one repository stay ambiguous. When the answer is ambiguous, call again with service_id set to a candidate's next_selector value; a candidate with legacy_id true is a leftover, not the live workload; choose a scoped candidate.",
       "inputSchema": {
         "properties": {
+          "downstream_read_limit": {
+            "description": "Indirect-evidence row bound for the dependents and consumer_repositories reads. Defaults to 25 when absent; clamps into (0, 100], and the effective bound is echoed on result_limits.downstream_read_limit and the investigation coverage. Raise it (at most 100) to recover a truncated fan-out in one re-call instead of paging.",
+            "type": "integer"
+          },
           "environment": {
             "description": "Optional environment context",
             "type": "string"
@@ -7612,6 +7623,55 @@
         "type": "object"
       },
       "name": "list_ssm_host_inventory"
+    },
+    {
+      "description": "Page a service's API surface endpoints in path, endpoint_id order. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. Returns the endpoints page with endpoint_count (the true total), detail_truncated, and next_offset (absent when the page is complete); repeat with offset set to next_offset until it is absent. The story and context dossiers keep only a 50-row api_surface preview and point here.",
+      "inputSchema": {
+        "properties": {
+          "environment": {
+            "description": "Optional environment context",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Endpoints per page. Defaults to 50 when absent; clamps into (0, 100].",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Rows to skip, in path, endpoint_id order. Defaults to 0 when absent; repeat the call with offset set to the previous page's next_offset until next_offset is absent.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "repo": {
+            "description": "Optional repository selector used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "repo_id": {
+            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "repository_id": {
+            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "service_id": {
+            "description": "Exact service identifier: a full scoped id (workload:repository:<repo_id>:<name>) or a workload:<name> handle, as listed in the candidates of an ambiguous answer. Selects one service on its own and wins over workload_id and service_name",
+            "type": "string"
+          },
+          "service_name": {
+            "description": "Optional service name selector when the caller starts from repository-scoped service story context",
+            "type": "string"
+          },
+          "workload_id": {
+            "description": "Service workload identifier, or a service name passed through the workload_id field",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_service_api_endpoints"
     }
   ],
   "router_tools": [

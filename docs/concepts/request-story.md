@@ -19,7 +19,7 @@ door rather than halfway through — see [Boundaries](boundaries.md).
 
 What gets advertised depends on `ESHU_MCP_TOOL_SURFACE`:
 
-- `full` (the default) advertises all 171 tools.
+- `full` (the default) advertises all 172 tools.
 - `router` advertises just `find_tool` and `call_tool`.
 - `core_router` advertises 10 core tools plus the router pair.
 

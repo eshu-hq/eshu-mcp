@@ -29,6 +29,16 @@ route `GET /api/v0/cloud/ssm-host-inventory`). Both are ported here verbatim
 `origin/main` at `b1748fc0b1b65d8f2ee29fbd58bbf5b2251d6a84`), in census order,
 bringing the contract to the full 171-tool pre-extraction set.
 
+Appendix (#10477, `eshu-hq/eshu-mcp#65`): the `drive/10477-service-paging`
+branch adds `list_service_api_endpoints`
+(`go/internal/mcp/service/context_tools.go`, route
+`GET /api/v0/services/{service_name}/api-surface/endpoints`) plus the
+`downstream_read_limit` bound on `get_service_story`/`get_service_context`,
+ahead of its source census landing. It is ported here verbatim (description,
+input schema, selector precedence, and opt-in `limit`/`offset` forwarding
+verified against the drive branch) as entry 172, so the source commit and
+census count stay pinned at `9922b49`/171 while the served registry is 172.
+
 ## File mapping
 
 | This file | Source | Class |

@@ -68,7 +68,7 @@ with an `Authorization: Bearer <token>` header on both.
 | [Operating: SSE session limits](docs/operations.md) | Session caps, refusal shape, and what to watch — read before a shared-key deploy |
 | [What this build serves](docs/skeleton.md) | Scope of the current build |
 | [Release](docs/release.md) | Tags, images, and how to check a published digest |
-| [Tool registry contract](contracts/tool-registry/v1/tools.json) | The 171 tools, in contract order, with pinned read bounds |
+| [Tool registry contract](contracts/tool-registry/v1/tools.json) | The 172 tools, in contract order, with pinned read bounds |
 | [Shared shapes](contracts/shared-shapes/v1/SHARED_SHAPES.md) | Wire shapes shared with the other Eshu surfaces |
 | Maintainer history: [parity](docs/parity.md), [provenance](docs/provenance.md), [cutover ownership](docs/source/CUTOVER_OWNERSHIP.md), and QA notes in `docs/qa/` | What moved where, source pins, and parity evidence |
 

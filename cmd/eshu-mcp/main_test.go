@@ -224,8 +224,8 @@ func TestBuildServerWiring(t *testing.T) {
 	if summary.surface != router.SurfaceFull {
 		t.Errorf("surface = %q, want the full default", summary.surface)
 	}
-	if summary.advertised != 171 {
-		t.Errorf("advertised = %d, want the 171-tool registry", summary.advertised)
+	if summary.advertised != 172 {
+		t.Errorf("advertised = %d, want the 172-tool registry", summary.advertised)
 	}
 	if summary.listBytes <= 0 {
 		t.Error("tools/list bytes is not positive")
@@ -248,8 +248,8 @@ func TestBuildServerWiring(t *testing.T) {
 
 func TestBuildServerProductionProfile(t *testing.T) {
 	_, _, summary := buildServer(quietLogger(), testClient(t), "https://core:8443", "deploy-key", mcpserver.DiscoveryConfig{}, true, router.Surface(""), resultshape.Mode(""), "production")
-	if summary.advertised != 171-4 {
-		t.Errorf("production advertised = %d, want 171 minus the 4 hidden tools", summary.advertised)
+	if summary.advertised != 172-4 {
+		t.Errorf("production advertised = %d, want 172 minus the 4 hidden tools", summary.advertised)
 	}
 }
 

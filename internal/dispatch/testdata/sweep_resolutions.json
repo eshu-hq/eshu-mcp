@@ -2672,6 +2672,18 @@
       }
     }
   ],
+  "list_service_api_endpoints": [
+    {
+      "arguments": {
+        "workload_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/services/sweep-seed-missing/api-surface/endpoints",
+      "query": {}
+    }
+  ],
   "list_service_catalog_correlations": [
     {
       "arguments": {
