@@ -10,7 +10,7 @@
     "note": "Tool order is part of the contract and must stay byte-stable with the source census."
   },
   "registry": {
-    "tool_count": 171,
+    "tool_count": 172,
     "tool_order": [
       "find_code",
       "find_symbol",
@@ -182,7 +182,8 @@
       "list_runtime_version_declarations",
       "search_dockerfile_installs",
       "search_php_configuration",
-      "list_ssm_host_inventory"
+      "list_ssm_host_inventory",
+      "list_service_api_endpoints"
     ]
   },
   "router_surface": {

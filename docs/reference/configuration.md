@@ -77,7 +77,7 @@ config for you, env-var reference included.)
 These three knobs shape what clients see, and all three fail fast on a
 typo rather than falling back silently:
 
-- `ESHU_MCP_TOOL_SURFACE` takes `full` (all 171 tools advertised),
+- `ESHU_MCP_TOOL_SURFACE` takes `full` (all 172 tools advertised),
   `router` (just `find_tool` and `call_tool`), or `core_router`
   (10 core tools plus the pair). Matching is case-insensitive. Direct
   calls to registered tools work on every surface.

@@ -8,14 +8,19 @@ import (
 	"testing"
 )
 
-// TestRegistryReseed171 pins the #9303 reseed plus the #9670 appendix: the
-// contract carries all 171 source tools in registration order. The first 169
-// come from the origin/main 9922b49 seed facts (TestZZEmitSeedFacts at that
+// TestRegistryReseed171PlusServicePaging pins the #9303 reseed plus the
+// #9670 and #10477 appendices: the contract carries all 171 source tools in
+// registration order, plus one satellite appendix tool. The first 169 come
+// from the origin/main 9922b49 seed facts (TestZZEmitSeedFacts at that
 // commit), closing the stale-168 defect that rode the skeleton; entries 170
 // and 171 are the two tools the source census appended after the seed
 // (search_php_configuration, list_ssm_host_inventory), ported verbatim from
-// the in-tree census tail. This test locks the rendered result.
-func TestRegistryReseed171(t *testing.T) {
+// the in-tree census tail. Entry 172 is the eshu#10477 service paging tool
+// (list_service_api_endpoints), ported verbatim from the drive/10477-service
+// paging branch ahead of its source census landing, so the source commit
+// and census_count_constant stay pinned at 9922b49 and 171 while the served
+// registry moves to 172. This test locks the rendered result.
+func TestRegistryReseed171PlusServicePaging(t *testing.T) {
 	t.Parallel()
 
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -46,14 +51,14 @@ func TestRegistryReseed171(t *testing.T) {
 	if decoded.Source.CensusCountConstant != 171 {
 		t.Errorf("source.census_count_constant = %d, want 171", decoded.Source.CensusCountConstant)
 	}
-	if decoded.Registry.ToolCount != 171 {
-		t.Errorf("registry.tool_count = %d, want 171", decoded.Registry.ToolCount)
+	if decoded.Registry.ToolCount != 172 {
+		t.Errorf("registry.tool_count = %d, want 172", decoded.Registry.ToolCount)
 	}
-	if len(decoded.Registry.ToolOrder) != 171 {
-		t.Fatalf("len(tool_order) = %d, want 171", len(decoded.Registry.ToolOrder))
+	if len(decoded.Registry.ToolOrder) != 172 {
+		t.Fatalf("len(tool_order) = %d, want 172", len(decoded.Registry.ToolOrder))
 	}
-	if tail := decoded.Registry.ToolOrder[169:]; len(tail) != 2 || tail[0] != "search_php_configuration" || tail[1] != "list_ssm_host_inventory" {
-		t.Errorf("tool_order[169:] = %q, want the #9670 appendix tail", tail)
+	if tail := decoded.Registry.ToolOrder[169:]; len(tail) != 3 || tail[0] != "search_php_configuration" || tail[1] != "list_ssm_host_inventory" || tail[2] != "list_service_api_endpoints" {
+		t.Errorf("tool_order[169:] = %q, want the #9670 pair plus the #10477 appendix", tail)
 	}
 	if decoded.Source.OwnershipMapSHA256 == "71b005ee7305ca0768f38694ac6de237901d963df75d4077dd57e189bfadc89f" {
 		t.Errorf("ownership_map_sha256 still pins the e4c385f4 map; resync docs/source/CUTOVER_OWNERSHIP.md to 9922b49")
