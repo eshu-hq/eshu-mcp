@@ -93,6 +93,110 @@ func TestListServiceAPIEndpointsPagingAndRepo(t *testing.T) {
 	}
 }
 
+// TestListServiceDownstreamConsumersRoute (eshu#10535) proves
+// list_service_downstream_consumers resolves to GET
+// /api/v0/services/{selector}/downstream-consumers with get_service_story
+// selector parity: service_id wins over workload_id wins over service_name.
+func TestListServiceDownstreamConsumersRoute(t *testing.T) {
+	t.Parallel()
+
+	route, handled, err := Route("list_service_downstream_consumers", routecontract.Arguments{
+		"service_id": "service:payments-api",
+	})
+	if err != nil {
+		t.Fatalf("Route error = %v, want nil", err)
+	}
+	if !handled {
+		t.Fatal("Route(list_service_downstream_consumers) handled = false, want true")
+	}
+	if route.Method != "GET" || route.Path != "/api/v0/services/payments-api/downstream-consumers" {
+		t.Fatalf("Route = %v %v, want GET /api/v0/services/payments-api/downstream-consumers", route.Method, route.Path)
+	}
+	if len(route.Query) != 0 {
+		t.Fatalf("Route query = %v, want empty when only a bare selector is given", route.Query)
+	}
+}
+
+// TestListServiceDownstreamConsumersSelectorPrecedence proves the first
+// non-blank selector wins in service_id, workload_id, service_name order,
+// and that a workload-qualified selector is also forwarded as the service_id
+// query.
+func TestListServiceDownstreamConsumersSelectorPrecedence(t *testing.T) {
+	t.Parallel()
+
+	route, _, err := Route("list_service_downstream_consumers", routecontract.Arguments{
+		"service_id":   "service:exact",
+		"workload_id":  "workload:shop",
+		"service_name": "payments",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Path != "/api/v0/services/exact/downstream-consumers" {
+		t.Fatalf("Route path = %q, want the service_id selector to win", route.Path)
+	}
+	route, _, err = Route("list_service_downstream_consumers", routecontract.Arguments{
+		"workload_id":  "workload:shop",
+		"service_name": "payments",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Path != "/api/v0/services/workload:shop/downstream-consumers" {
+		t.Fatalf("Route path = %q, want the workload_id selector whole", route.Path)
+	}
+	if route.Query["service_id"] != "workload:shop" {
+		t.Fatalf("Route query = %v, want the workload handle forwarded as service_id", route.Query)
+	}
+}
+
+// TestListServiceDownstreamConsumersPagingAndRepo proves limit and the
+// after_repository/after_repo_id cursor travel only when the caller names
+// them (the handler owns defaults, clamping, and 400s), while environment
+// and the repo aliases always forward.
+func TestListServiceDownstreamConsumersPagingAndRepo(t *testing.T) {
+	t.Parallel()
+
+	route, _, err := Route("list_service_downstream_consumers", routecontract.Arguments{
+		"service_name":     "payments",
+		"repo_id":          "r1",
+		"environment":      "prod",
+		"limit":            25,
+		"after_repository": "webapp",
+		"after_repo_id":    "repository:webapp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.Path != "/api/v0/services/payments/downstream-consumers" {
+		t.Fatalf("Route path = %q, want the service_name path", route.Path)
+	}
+	want := map[string]string{"repo": "r1", "environment": "prod", "limit": "25", "after_repository": "webapp", "after_repo_id": "repository:webapp"}
+	for key, value := range want {
+		if route.Query[key] != value {
+			t.Fatalf("Route query[%q] = %q, want %q (query = %v)", key, route.Query[key], value, route.Query)
+		}
+	}
+	if len(route.Query) != len(want) {
+		t.Fatalf("Route query = %v, want exactly %v", route.Query, want)
+	}
+}
+
+// TestListServiceDownstreamConsumersRequiresSelector proves a missing
+// selector is a handled refusal naming the tool, never a request with an
+// empty path segment.
+func TestListServiceDownstreamConsumersRequiresSelector(t *testing.T) {
+	t.Parallel()
+
+	_, handled, err := Route("list_service_downstream_consumers", routecontract.Arguments{})
+	if !handled {
+		t.Fatal("Route(list_service_downstream_consumers, {}) handled = false, want true with a refusal")
+	}
+	if err == nil || err.Error() != "list_service_downstream_consumers requires service_id, workload_id, or service_name" {
+		t.Fatalf("Route error = %v, want the selector refusal", err)
+	}
+}
+
 // TestListServiceAPIEndpointsRequiresSelector proves a missing selector is
 // a handled refusal naming the tool, never a request with an empty path
 // segment.

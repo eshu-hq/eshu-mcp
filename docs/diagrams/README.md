@@ -50,7 +50,7 @@ Text version:
 1. Your client posts `initialize` to `/mcp/message`; we agree on
    protocol versions.
 2. You ask `tools/list`; we answer with the tools this surface
-   advertises (all 172 by default — see
+   advertises (all 173 by default — see
    [Reference: configuration](../reference/configuration.md)).
 3. You call a tool with a Bearer token.
 4. The call becomes a bounded HTTP read against the core (30 seconds,

@@ -313,6 +313,9 @@
       "service_id": "<service_id>"
     },
     "list_service_catalog_correlations": {},
+    "list_service_downstream_consumers": {
+      "service_id": "<service_id>"
+    },
     "list_ssm_host_inventory": {},
     "list_supply_chain_impact_findings": {},
     "list_terraform_config_state_drift_findings": {
@@ -7672,6 +7675,57 @@
         "type": "object"
       },
       "name": "list_service_api_endpoints"
+    },
+    {
+      "description": "Page a service's downstream consumer repositories in (repository, repo_id) order. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. Returns the page with truncated, next_cursor (absent when the page is terminal), consumer_truncation_sources naming which read bound fired, searched_hostnames, and effective_read_bound. Repeat with after_repository/after_repo_id set to the previous page's next_cursor until next_cursor is absent. Counts are lower bounds, never totals.",
+      "inputSchema": {
+        "properties": {
+          "after_repo_id": {
+            "description": "Cursor: repo_id of the last row served on the previous page. Must be provided together with after_repository.",
+            "type": "string"
+          },
+          "after_repository": {
+            "description": "Cursor: repository of the last row served on the previous page. Must be provided together with after_repo_id; repeat the call with both set from next_cursor until next_cursor is absent.",
+            "type": "string"
+          },
+          "environment": {
+            "description": "Optional environment context",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Consumers per page. Defaults to 50 when absent; clamps into (0, 100].",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "repo": {
+            "description": "Optional repository selector used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "repo_id": {
+            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "repository_id": {
+            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "service_id": {
+            "description": "Exact service identifier: a full scoped id (workload:repository:<repo_id>:<name>) or a workload:<name> handle, as listed in the candidates of an ambiguous answer. Selects one service on its own and wins over workload_id and service_name",
+            "type": "string"
+          },
+          "service_name": {
+            "description": "Optional service name selector when the caller starts from repository-scoped service story context",
+            "type": "string"
+          },
+          "workload_id": {
+            "description": "Service workload identifier, or a service name passed through the workload_id field",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_service_downstream_consumers"
     }
   ],
   "router_tools": [

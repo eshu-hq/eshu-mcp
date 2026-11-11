@@ -2709,6 +2709,18 @@
       }
     }
   ],
+  "list_service_downstream_consumers": [
+    {
+      "arguments": {
+        "workload_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/services/sweep-seed-missing/downstream-consumers",
+      "query": {}
+    }
+  ],
   "list_ssm_host_inventory": [
    {
      "arguments": {

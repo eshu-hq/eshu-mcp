@@ -11,7 +11,7 @@ name-by-name and position-by-position against the live source census with an
 independent re-extraction (the check script parses the source file again
 instead of trusting the seed script's memory).
 
-## Results (reseed, 2026-10-29: source `9922b49`, 169 tools; appendix #9670: 171 tools; appendix #10477: 172 tools)
+## Results (reseed, 2026-10-29: source `9922b49`, 169 tools; appendix #9670: 171 tools; appendix #10477: 172 tools; appendix #10535: 173 tools)
 
 - `docs/source/CUTOVER_OWNERSHIP.md` is byte-identical to
   `go/cmd/mcp-server/CUTOVER_OWNERSHIP.md` at
@@ -19,9 +19,10 @@ instead of trusting the seed script's memory).
   `cmp` exited 0 and both files hash to
   `1daf8a6d7637981a8db8d08485fad77561c4749bbd794d3c9671d79bfe7a85df`.
 - `contracts/tool-registry/v1/tools.json`: source census count 171, dest
-  count 172, order identical through the census tail. First tool `find_code`,
+  count 173, order identical through the census tail. First tool `find_code`,
   tail tools `search_php_configuration`, `list_ssm_host_inventory`, then the
-  `eshu#10477` appendix `list_service_api_endpoints`. All 172 names
+  `eshu#10477` appendix `list_service_api_endpoints` and the `eshu#10535`
+  appendix `list_service_downstream_consumers`. All 173 names
   unique. Census count constant still matches the source commit.
 - Envelope MIME `application/eshu.envelope+json`, dispatch timeout `30s`,
   response budget 262144 bytes, router limits 5/10: equal to the source

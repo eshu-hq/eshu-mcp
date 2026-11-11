@@ -26,13 +26,13 @@ def main():
     doc = json.loads(tools_path.read_text())
     order = doc["registry"]["tool_order"]
     check(doc["contract_version"] == "v1", "contract version is v1")
-    check(doc["registry"]["tool_count"] == 172, "registry count is 172")
-    check(len(order) == 172, "tool_order has 172 entries")
+    check(doc["registry"]["tool_count"] == 173, "registry count is 173")
+    check(len(order) == 173, "tool_order has 173 entries")
     check(len(set(order)) == len(order), "tool names are unique")
     check(order[0] == "find_code", "first tool is find_code")
     check(
-        order[-3:] == ["search_php_configuration", "list_ssm_host_inventory", "list_service_api_endpoints"],
-        "tail tools are the #9670 pair plus list_service_api_endpoints (#10477)",
+        order[-4:] == ["search_php_configuration", "list_ssm_host_inventory", "list_service_api_endpoints", "list_service_downstream_consumers"],
+        "tail tools are the #9670 pair plus list_service_api_endpoints (#10477) and list_service_downstream_consumers (#10535)",
     )
     check(
         doc["source"]["census_count_constant"] == 171,

@@ -39,6 +39,16 @@ input schema, selector precedence, and opt-in `limit`/`offset` forwarding
 verified against the drive branch) as entry 172, so the source commit and
 census count stay pinned at `9922b49`/171 while the served registry is 172.
 
+Appendix (#10535): the `drive/10535-consumer-list-tool` branch adds
+`list_service_downstream_consumers`
+(`go/internal/mcp/service/context_tools.go`, route
+`GET /api/v0/services/{service_name}/downstream-consumers`) with the
+keyset `limit`/`after_repository`/`after_repo_id` page parameters, ahead of
+its source census landing. It is ported here verbatim (description, input
+schema, selector precedence, and opt-in `limit`/cursor forwarding verified
+against the drive branch) as entry 173, so the source commit and census
+count stay pinned at `9922b49`/171 while the served registry is 173.
+
 ## File mapping
 
 | This file | Source | Class |

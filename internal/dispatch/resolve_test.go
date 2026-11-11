@@ -10,9 +10,10 @@ import (
 )
 
 // The sweep table is the source catalog_sweep_args.json at 9922b49 plus the
-// eshu#10477 appendix row for list_service_api_endpoints; the expectations
+// eshu#10477 appendix row for list_service_api_endpoints and the eshu#10535
+// appendix row for list_service_downstream_consumers; the expectations
 // are the source ResolveRoute answers for those arguments, emitted by the
-// seed (and the ported answer for the appendix row). The test re-resolves
+// seed (and the ported answers for the appendix rows). The test re-resolves
 // every case through the ported selectors and requires the identical request
 // (or the identical refusal), so any selector drift fails the build.
 func TestResolveSweepMatchesSeed(t *testing.T) {
@@ -47,8 +48,8 @@ func TestResolveSweepMatchesSeed(t *testing.T) {
 		t.Fatalf("parse sweep_resolutions.json: %v", err)
 	}
 
-	if len(argsTable.Tools) != 172 {
-		t.Fatalf("sweep table covers %d tools, want all 172", len(argsTable.Tools))
+	if len(argsTable.Tools) != 173 {
+		t.Fatalf("sweep table covers %d tools, want all 173", len(argsTable.Tools))
 	}
 	for name, cases := range argsTable.Tools {
 		want, ok := expected[name]

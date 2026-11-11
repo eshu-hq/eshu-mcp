@@ -144,6 +144,7 @@ func TestCallSelectorAlternativesDispatch(t *testing.T) {
 		"get_service_story":                               {},
 		"get_service_intelligence_report":                 {},
 		"list_service_api_endpoints":                      {},
+		"list_service_downstream_consumers":               {},
 		"investigate_service":                             {},
 		"search_registry_bundles":                         {},
 		"search_php_configuration":                        {},

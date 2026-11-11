@@ -191,8 +191,8 @@ func TestAdvertiseSurfaces(t *testing.T) {
 	t.Parallel()
 
 	all := registry.Definitions()
-	if got := Advertise(all, SurfaceFull); len(got) != 172 {
-		t.Errorf("Advertise(full) = %d tools, want 172", len(got))
+	if got := Advertise(all, SurfaceFull); len(got) != 173 {
+		t.Errorf("Advertise(full) = %d tools, want 173", len(got))
 	}
 	pair := Advertise(all, SurfaceRouter)
 	if len(pair) != 2 || pair[0].Name != "find_tool" || pair[1].Name != "call_tool" {

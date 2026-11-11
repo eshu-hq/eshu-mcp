@@ -28,7 +28,7 @@ These pages predate the tree above and stay where they are:
 - [Release](release.md) — tags, images, and how to check a published
   digest.
 - [Tool registry contract](../contracts/tool-registry/v1/tools.json) —
-  the 172 tools, in contract order, with pinned read bounds.
+  the 173 tools, in contract order, with pinned read bounds.
 - [Shared shapes](../contracts/shared-shapes/v1/SHARED_SHAPES.md) —
   wire shapes shared with the other Eshu surfaces.
 
