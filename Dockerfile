@@ -1,18 +1,18 @@
 # eshu-mcp pre-cutover image: full read-path dispatch over core HTTP contracts.
-# Both stages pin by digest (verified 2026-10-29; re-verify with a registry
+# Both stages pin by digest (verified 2026-11-11; re-verify with a registry
 # lookup when bumping the tag). The build stage is the multi-arch
-# golang:1.26.10-bookworm list; the runtime stage is the multi-arch
+# golang:1.26.11-bookworm list; the runtime stage is the multi-arch
 # distroless static nonroot OCI index. Refresh the build digest with:
 #   TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/golang:pull" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
 #   curl -s -D - -o /dev/null -H "Authorization: Bearer $TOKEN" \
 #     -H "Accept: application/vnd.oci.image.index.v1+json" \
-#     https://registry-1.docker.io/v2/library/golang/manifests/1.26.10-bookworm | grep -i docker-content-digest
+#     https://registry-1.docker.io/v2/library/golang/manifests/1.26.11-bookworm | grep -i docker-content-digest
 # Runtime base refresh:
 #   TOKEN=$(curl -s "https://gcr.io/v2/token?service=gcr.io&scope=repository:distroless/static:pull" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
 #   curl -s -D - -o /dev/null -H "Authorization: Bearer $TOKEN" \
 #     -H "Accept: application/vnd.oci.image.index.v1+json" \
 #     https://gcr.io/v2/distroless/static/manifests/nonroot | grep -i docker-content-digest
-FROM golang:1.26.10-bookworm@sha256:23ce71337b726608afb1bc00986e630a05034a87a87ea1fc2cd1ae5cf33387eb AS build
+FROM golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 AS build
 # VERSION is the release tag (release.yml sets it; local builds report dev).
 ARG VERSION=dev
 WORKDIR /src
