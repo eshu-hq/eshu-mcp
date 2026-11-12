@@ -29,6 +29,18 @@ type definitionsSourceBounds struct {
 	ProtocolVersions       []string `json:"protocol_versions"`
 }
 
+// CatalogEntry is one tool's seeded catalog row: the cost class find_tool
+// reports, whether the tool is the preferred member of its family, and the
+// curated intent phrases the ranker scores above description text. It
+// mirrors the in-tree ask-catalog Entry for the fields the router needs;
+// the satellite cannot import internal/ask/catalog, so the shape is
+// re-declared here and filled from the router_catalog contract section.
+type CatalogEntry struct {
+	Cost      string   `json:"cost"`
+	Canonical bool     `json:"canonical"`
+	Intents   []string `json:"intents"`
+}
+
 type definitionsDoc struct {
 	Source struct {
 		Bounds definitionsSourceBounds `json:"bounds"`
@@ -38,6 +50,11 @@ type definitionsDoc struct {
 	Examples      map[string]map[string]any `json:"examples"`
 	CoreRouter    []string                  `json:"core_router_names"`
 	Hidden        []string                  `json:"production_hidden"`
+	// RouterCatalog holds the seeded cost/canonical/intents rows keyed by
+	// tool name. Contracts predating the section decode a nil map, which
+	// the ranker treats as catalog-free (today's behavior). A malformed
+	// section fails the shared decode above, like any corrupt contract.
+	RouterCatalog map[string]CatalogEntry `json:"router_catalog"`
 }
 
 var (
@@ -94,6 +111,31 @@ func RouterTools() []ToolDefinition {
 	}
 	out := make([]ToolDefinition, len(doc.RouterTools))
 	copy(out, doc.RouterTools)
+	return out
+}
+
+// RouterCatalog reports the seeded catalog rows keyed by tool name, for
+// the ranker to score intents and report cost and canonical marks. A
+// contract predating the router_catalog section — or a load failure —
+// yields nil, and the ranker treats nil as catalog-free, today's exact
+// behavior. The returned map and intent slices are copies; mutating them
+// cannot change the served registry.
+func RouterCatalog() map[string]CatalogEntry {
+	doc, err := loadDefinitions()
+	if err != nil {
+		return nil
+	}
+	if len(doc.RouterCatalog) == 0 {
+		return nil
+	}
+	out := make(map[string]CatalogEntry, len(doc.RouterCatalog))
+	for name, entry := range doc.RouterCatalog {
+		out[name] = CatalogEntry{
+			Cost:      entry.Cost,
+			Canonical: entry.Canonical,
+			Intents:   append([]string(nil), entry.Intents...),
+		}
+	}
 	return out
 }
 
