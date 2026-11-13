@@ -198,7 +198,7 @@ func TestToolsListServesRegistry(t *testing.T) {
 	}
 	first := mustMap(t, tools[0])
 	last := mustMap(t, tools[172])
-	if first["name"] != "find_code" || last["name"] != "list_service_downstream_consumers" {
+	if first["name"] != "find_code" || last["name"] != "list_ssm_host_inventory" {
 		t.Errorf("tools/list boundaries = %v/%v, want the registry order", first["name"], last["name"])
 	}
 	schema := mustMap(t, first["inputSchema"])

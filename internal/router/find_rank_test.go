@@ -74,7 +74,7 @@ func TestFindWithRankerRanksNamedTop(t *testing.T) {
 	t.Parallel()
 
 	tools := findRankTools()
-	engine := router.NewEngine(router.Config{Registry: tools, Ranker: rank.New(tools)})
+	engine := router.NewEngine(router.Config{Registry: tools, Ranker: rank.New(tools, nil)})
 	result := engine.Find(context.Background(), router.Request{Visible: tools}, map[string]any{"intent": "zebra"})
 
 	raw, err := json.Marshal(result.StructuredContent)
@@ -136,7 +136,7 @@ func TestFindEmptyResultIsNotError(t *testing.T) {
 	t.Parallel()
 
 	tools := findRankTools()
-	engine := router.NewEngine(router.Config{Registry: tools, Ranker: rank.New(tools)})
+	engine := router.NewEngine(router.Config{Registry: tools, Ranker: rank.New(tools, nil)})
 	result := engine.Find(context.Background(), router.Request{Visible: tools}, map[string]any{"intent": "xylophone quasar"})
 	if result.IsError {
 		raw, err := json.Marshal(result.StructuredContent)
@@ -162,7 +162,7 @@ func TestFindWithRankerHidesUnallowed(t *testing.T) {
 		{Name: "ask", Description: "Answers zebra questions.", InputSchema: map[string]any{"type": "object"}},
 	}
 	visible := registryTools[:1]
-	engine := router.NewEngine(router.Config{Registry: registryTools, Ranker: rank.New(registryTools)})
+	engine := router.NewEngine(router.Config{Registry: registryTools, Ranker: rank.New(registryTools, nil)})
 	result := engine.Find(context.Background(), router.Request{Visible: visible}, map[string]any{"intent": "zebra", "limit": 10})
 
 	if result.IsError {

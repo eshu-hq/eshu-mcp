@@ -155,7 +155,7 @@ func TestCostRankOrdersCheapToExpensive(t *testing.T) {
 // TestRankEmptyRegistryIsEmptyNotError proves an empty registry ranks to no
 // candidates and no error.
 func TestRankEmptyRegistryIsEmptyNotError(t *testing.T) {
-	got, err := New(nil).Rank(context.Background(), router.Query{Intent: "zebra", Limit: 5}, nil, allowAll)
+	got, err := New(nil, nil).Rank(context.Background(), router.Query{Intent: "zebra", Limit: 5}, nil, allowAll)
 	if err != nil {
 		t.Fatalf("Rank: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestRankContextCanceled(t *testing.T) {
 	tools := []registry.ToolDefinition{def("alpha_one", "Handles zebra processing.")}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := New(tools).Rank(ctx, router.Query{Intent: "zebra", Limit: 3}, tools, allowAll); err == nil {
+	if _, err := New(tools, nil).Rank(ctx, router.Query{Intent: "zebra", Limit: 3}, tools, allowAll); err == nil {
 		t.Fatalf("Rank with a canceled context returned no error")
 	}
 }
@@ -183,7 +183,7 @@ func TestRankConcurrentCallsAgree(t *testing.T) {
 		def("list_repositories", "Enumerate every repository known to the graph.", "limit"),
 		def("get_dead_code", "Report symbols with no incoming references.", "repo_id"),
 	}
-	r := New(tools)
+	r := New(tools, nil)
 	q := router.Query{Intent: "find a function definition", Limit: 5}
 	want, err := r.Rank(context.Background(), q, tools, allowAll)
 	if err != nil {

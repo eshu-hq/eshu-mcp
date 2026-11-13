@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	registry "github.com/eshu-hq/eshu-mcp"
 	"github.com/eshu-hq/eshu-mcp/internal/mcpserver"
 	"github.com/eshu-hq/eshu-mcp/internal/resultshape"
 	"github.com/eshu-hq/eshu-mcp/internal/router"
@@ -71,8 +72,8 @@ func findCandidates(t *testing.T, decoded map[string]any) []any {
 // TestBuildServerRouterSurfacesBootAndRank proves the live router and
 // core_router surfaces boot with the ported ranker (no startup refusal) and
 // rank a find_tool request: candidates come back, the order is deterministic
-// across identical requests, and every candidate carries the catalog-free
-// cost default.
+// across identical requests, and every candidate carries its seeded catalog
+// cost (the part-C contract ships the router_catalog section).
 func TestBuildServerRouterSurfacesBootAndRank(t *testing.T) {
 	for _, tc := range []struct {
 		surface    router.Surface
@@ -107,6 +108,10 @@ func TestBuildServerRouterSurfacesBootAndRank(t *testing.T) {
 		if string(firstRaw) != string(secondRaw) {
 			t.Errorf("surface %q find_tool order is not deterministic:\n%s\n%s", tc.surface, firstRaw, secondRaw)
 		}
+		catalog := registry.RouterCatalog()
+		if len(catalog) == 0 {
+			t.Fatalf("surface %q booted without the seeded router_catalog", tc.surface)
+		}
 		for _, item := range first {
 			candidate, ok := item.(map[string]any)
 			if !ok {
@@ -117,12 +122,18 @@ func TestBuildServerRouterSurfacesBootAndRank(t *testing.T) {
 					t.Fatalf("candidate %v missing %q", candidate, key)
 				}
 			}
-			if candidate["cost"] != "high" {
-				t.Errorf("candidate %v cost = %v, want %q (catalog-free default)", candidate["name"], candidate["cost"], "high")
-			}
 			name, ok := candidate["name"].(string)
 			if !ok || name == "" {
 				t.Errorf("candidate name = %v, want a non-empty string", candidate["name"])
+				continue
+			}
+			entry, ok := catalog[name]
+			if !ok {
+				t.Errorf("candidate %v has no seeded catalog row, want one per registry tool", name)
+				continue
+			}
+			if candidate["cost"] != entry.Cost {
+				t.Errorf("candidate %v cost = %v, want seeded %q", name, candidate["cost"], entry.Cost)
 			}
 		}
 	}

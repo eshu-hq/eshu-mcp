@@ -122,6 +122,7 @@ func wireServer(args []string, getenv func(string) string, logOut *slog.Logger) 
 		"tools", summary.advertised,
 		"tool_surface", string(summary.surface),
 		"tools_list_bytes", summary.listBytes,
+		"router_catalog", summary.catalog,
 		"core", *coreBaseURL,
 		"addr", *addr,
 	)
@@ -163,23 +164,29 @@ func sseSessionOptions(getenv func(string) string) ([]mcpserver.ServerOption, er
 	return opts, nil
 }
 
-// serverSummary is the startup advertisement the operator confirms.
+// serverSummary is the startup advertisement the operator confirms. catalog
+// is the seeded router_catalog row count: 0 on a contract predating the
+// section means a catalog-free boot, today's behavior.
 type serverSummary struct {
 	surface    router.Surface
 	advertised int
 	listBytes  int
+	catalog    int
 }
 
 // buildServer wires the registry, dispatch boundary, transport, and auth
 // without binding a listener, so tests can prove the wiring serves the
-// pinned surface. It wires the catalog-free lexical ranker, so the router
-// and core_router surfaces boot with find_tool ranking. The core client
+// pinned surface. It wires the entry-aware lexical ranker over the seeded
+// catalog rows, so the router and core_router surfaces boot with find_tool
+// ranking; a contract predating the router_catalog section seeds nil and
+// the ranker behaves exactly as the old catalog-free build. The core client
 // arrives built: wireServer rejects an invalid config before any listener
 // starts. authEnforced mirrors the monolith: transport auth is wired
 // whenever any credential knob is set, so a headerless request is denied;
 // only the escape-hatch-open deployment with no source serves open.
 func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, apiKey string, discovery mcpserver.DiscoveryConfig, authEnforced bool, surface router.Surface, shape resultshape.Mode, profile string, extraOpts ...mcpserver.ServerOption) (*mcpserver.Server, *http.ServeMux, serverSummary) {
 	tools := eshuregistry.Definitions()
+	catalog := eshuregistry.RouterCatalog()
 	if mcpserver.IsProductionProfile(profile) {
 		hidden := eshuregistry.ProductionHidden()
 		kept := make([]eshuregistry.ToolDefinition, 0, len(tools))
@@ -203,7 +210,7 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 		mcpserver.WithToolSurface(surface),
 		mcpserver.WithResultShape(shape),
 		mcpserver.WithRouterRanker(func(tools []eshuregistry.ToolDefinition) router.Ranker {
-			return rank.New(tools)
+			return rank.New(tools, catalog)
 		}),
 	}
 	var admission *mcpserver.Admission
@@ -265,7 +272,7 @@ func buildServer(logOut *slog.Logger, client *readcontract.Client, coreBaseURL, 
 			return
 		}
 	})
-	return server, extra, serverSummary{surface: surfaceName, advertised: advertised, listBytes: listBytes}
+	return server, extra, serverSummary{surface: surfaceName, advertised: advertised, listBytes: listBytes, catalog: len(catalog)}
 }
 
 func main() {

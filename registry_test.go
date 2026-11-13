@@ -80,8 +80,8 @@ func TestRegistryBoundaryNames(t *testing.T) {
 	if got[0] != "find_code" {
 		t.Errorf("ToolNames()[0] = %q, want %q", got[0], "find_code")
 	}
-	if last := got[len(got)-1]; last != "list_service_downstream_consumers" {
-		t.Errorf("ToolNames()[last] = %q, want %q", last, "list_service_downstream_consumers")
+	if last := got[len(got)-1]; last != "list_ssm_host_inventory" {
+		t.Errorf("ToolNames()[last] = %q, want %q", last, "list_ssm_host_inventory")
 	}
 }
 

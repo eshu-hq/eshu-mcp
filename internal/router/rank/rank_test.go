@@ -57,7 +57,7 @@ func equalStrings(a, b []string) bool {
 // with every tool allowed.
 func rankWith(t *testing.T, tools []registry.ToolDefinition, q router.Query) []router.Candidate {
 	t.Helper()
-	got, err := New(tools).Rank(context.Background(), q, tools, allowAll)
+	got, err := New(tools, nil).Rank(context.Background(), q, tools, allowAll)
 	if err != nil {
 		t.Fatalf("Rank: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestNewRanksCatalogFreeWithHighDefault(t *testing.T) {
 	}
 	q := router.Query{Intent: "zebra", Limit: 5}
 
-	r := New(tools)
+	r := New(tools, nil)
 	if got := r.builds.Load(); got != 1 {
 		t.Fatalf("builds after New = %d, want 1", got)
 	}
@@ -110,7 +110,7 @@ func TestRankSameInputsReuseIndex(t *testing.T) {
 		def("alpha", "Locates the zebra."),
 		def("beta", "Locates the zebra."),
 	}
-	r := New(tools)
+	r := New(tools, nil)
 	for range 5 {
 		if _, err := r.Rank(context.Background(), router.Query{Intent: "zebra", Limit: 5}, tools, allowAll); err != nil {
 			t.Fatalf("Rank: %v", err)
@@ -125,7 +125,7 @@ func TestRankSameInputsReuseIndex(t *testing.T) {
 // from a stale index, even when its names look the same.
 func TestRankNewSliceRebuilds(t *testing.T) {
 	old := []registry.ToolDefinition{def("alpha", "Locates the zebra."), def("beta", "Locates the horse.")}
-	r := New(old)
+	r := New(old, nil)
 	changed := []registry.ToolDefinition{def("alpha", "Locates the horse."), def("beta", "Locates the zebra.")}
 	got, err := r.Rank(context.Background(), router.Query{Intent: "zebra", Limit: 5}, changed, allowAll)
 	if err != nil {
@@ -143,7 +143,7 @@ func TestRankNewSliceRebuilds(t *testing.T) {
 // closed instead of inventing an order.
 func TestRankNilAllowedFailsClosed(t *testing.T) {
 	tools := []registry.ToolDefinition{def("alpha_one", "Handles zebra processing.")}
-	got, err := New(tools).Rank(context.Background(), router.Query{Intent: "zebra", Limit: 5}, tools, nil)
+	got, err := New(tools, nil).Rank(context.Background(), router.Query{Intent: "zebra", Limit: 5}, tools, nil)
 	if err == nil || len(got) != 0 {
 		t.Fatalf("got %v, %v; want an error and no candidates for a nil allowed func", names(got), err)
 	}
@@ -317,7 +317,7 @@ func TestRankAllowedFiltersBeforeRanking(t *testing.T) {
 		def("public_other", "Unrelated horse lookup."),
 	}
 	q := router.Query{Intent: "zebra lookup", Limit: 10}
-	r := New(tools)
+	r := New(tools, nil)
 	allowed := func(n string) bool { return n != "secret_zebra" }
 	got, err := r.Rank(context.Background(), q, tools, allowed)
 	if err != nil {
@@ -390,7 +390,7 @@ func TestRankBoundsHugeIntent(t *testing.T) {
 	for i := 0; b.Len() < 4<<20; i++ {
 		fmt.Fprintf(&b, "w%d ", i)
 	}
-	r := New(tools)
+	r := New(tools, nil)
 	start := time.Now()
 	got, err := r.Rank(context.Background(), router.Query{Intent: b.String(), Limit: 3}, tools, allowAll)
 	if err != nil {

@@ -2722,18 +2722,18 @@
     }
   ],
   "list_ssm_host_inventory": [
-   {
-     "arguments": {
-      "limit": 5
-     },
-     "body": null,
-     "label": "default",
-     "method": "GET",
-     "path": "/api/v0/cloud/ssm-host-inventory",
-     "query": {
-      "limit": "5"
-     }
-   }
+    {
+      "arguments": {
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/cloud/ssm-host-inventory",
+      "query": {
+        "limit": "5"
+      }
+    }
   ],
   "list_supply_chain_impact_findings": [
     {

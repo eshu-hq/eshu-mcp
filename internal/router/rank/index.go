@@ -7,12 +7,15 @@ import (
 	registry "github.com/eshu-hq/eshu-mcp"
 )
 
-// Field weights. The tool name is the strongest signal and the free-text
-// description is weaker because it carries the most incidental vocabulary.
-// With no catalog entries there are no curated intent phrases.
+// Field weights. A curated intent phrase is the strongest signal, the tool
+// name is next, and the free-text description is the weakest because it
+// carries the most incidental vocabulary. The values mirror the in-tree
+// ranker; tuning them is the in-tree eval harness's job (#8756), never this
+// port's.
 const (
-	weightName = 2.0
-	weightDesc = 1.0
+	weightIntent = 3.0
+	weightName   = 2.0
+	weightDesc   = 1.0
 )
 
 // unitKind says which free-text source a Why candidate came from.
@@ -70,27 +73,37 @@ func costRank(c string) int {
 }
 
 // buildIndex tokenizes every tool once and strips registry-wide boilerplate.
-func buildIndex(tools []registry.ToolDefinition) *index {
+// entries carries the seeded catalog rows keyed by tool name; a nil map (a
+// contract predating the router_catalog section) reproduces today's exact
+// catalog-free behavior.
+func buildIndex(tools []registry.ToolDefinition, entries map[string]registry.CatalogEntry) *index {
 	idx := &index{
 		docs:  make([]*doc, 0, len(tools)),
 		tools: tools,
 	}
 	boiler := findBoilerplate(tools)
 	for _, t := range tools {
-		idx.docs = append(idx.docs, buildDoc(t, boiler))
+		idx.docs = append(idx.docs, buildDoc(t, entries[t.Name], boiler))
 	}
 	return idx
 }
 
-// buildDoc tokenizes one tool. With no catalog entry every tool keeps the
-// conservative CostHigh default and no Canonical mark.
-func buildDoc(t registry.ToolDefinition, boiler *boilerplate) *doc {
+// buildDoc tokenizes one tool. The cost and Canonical mark come from the
+// tool's catalog entry; a tool with no entry — or an entry with an empty
+// cost — keeps the conservative CostHigh default and no Canonical mark.
+// Intent phrases score above the name and description and surface in the
+// Why line through the unitIntent kind, mirroring the in-tree buildDoc.
+func buildDoc(t registry.ToolDefinition, entry registry.CatalogEntry, boiler *boilerplate) *doc {
 	d := &doc{
 		name:      t.Name,
-		cost:      CostHigh,
+		cost:      entry.Cost,
+		canonical: entry.Canonical,
 		tf:        map[string]float64{},
 		nameTerms: map[string]struct{}{},
 		props:     map[string]struct{}{},
+	}
+	if d.cost == "" {
+		d.cost = CostHigh
 	}
 	d.costRank = costRank(d.cost)
 	add := func(toks []string, w float64) map[string]struct{} {
@@ -103,6 +116,9 @@ func buildDoc(t registry.ToolDefinition, boiler *boilerplate) *doc {
 		return set
 	}
 	d.nameTerms = add(tokens(t.Name), weightName)
+	for _, phrase := range entry.Intents {
+		d.units = append(d.units, unit{text: phrase, kind: unitIntent, terms: add(tokens(phrase), weightIntent)})
+	}
 	for _, s := range sentences(t.Description) {
 		kept := boiler.keep(s)
 		if len(kept) == 0 {

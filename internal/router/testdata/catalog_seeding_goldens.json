@@ -1,0 +1,258 @@
+{
+  "_comment": "Fix-07 catalog-seeding goldens: catalog_free_top5 pins catalog-free ranking over the full 173-tool registry; seeded_top5 pins the part-C seeded ranking (router_catalog from the 93f481e3d2 seed facts). A change here means the ranker or the seeded catalog moved.",
+  "contract_version": "v1",
+  "queries": [
+    {
+      "intent": "how do BT leads work",
+      "limit": 5,
+      "catalog_free_top5": [
+        "list_work_item_evidence",
+        "list_dead_letter_work_items",
+        "list_changed_since_poisoned_links",
+        "get_incident_context",
+        "list_collectors"
+      ],
+      "seeded_top5": [
+        "list_work_item_evidence",
+        "list_dead_letter_work_items",
+        "get_operator_control_plane",
+        "list_collectors",
+        "get_collector_readiness"
+      ]
+    },
+    {
+      "intent": "who owns this repository",
+      "limit": 5,
+      "catalog_free_top5": [
+        "trace_resource_to_code",
+        "explain_dependency_path",
+        "find_code",
+        "list_changed_since_poisoned_links",
+        "trace_exposure_path"
+      ],
+      "seeded_top5": [
+        "trace_resource_to_code",
+        "list_codeowners_ownership",
+        "find_unmanaged_resource_owners",
+        "list_package_registry_correlations",
+        "explain_dependency_path"
+      ]
+    },
+    {
+      "intent": "find owners of unmanaged resources",
+      "limit": 5,
+      "catalog_free_top5": [
+        "find_unmanaged_resources",
+        "find_unmanaged_resource_owners",
+        "find_infra_resources",
+        "find_blast_radius",
+        "find_change_surface"
+      ],
+      "seeded_top5": [
+        "find_unmanaged_resource_owners",
+        "find_unmanaged_resources",
+        "explain_iac_management_status",
+        "propose_terraform_import_plan",
+        "trace_resource_to_code"
+      ]
+    },
+    {
+      "intent": "which team is responsible for a service",
+      "limit": 5,
+      "catalog_free_top5": [
+        "investigate_service",
+        "get_service_story",
+        "get_service_context",
+        "get_service_intelligence_report",
+        "list_service_catalog_correlations"
+      ],
+      "seeded_top5": [
+        "get_service_story",
+        "investigate_service",
+        "get_service_context",
+        "get_service_intelligence_report",
+        "list_service_catalog_correlations"
+      ]
+    },
+    {
+      "intent": "search file content",
+      "limit": 5,
+      "catalog_free_top5": [
+        "search_file_content",
+        "get_file_content",
+        "search_php_configuration",
+        "resolve_entity",
+        "list_repository_files"
+      ],
+      "seeded_top5": [
+        "search_file_content",
+        "get_file_content",
+        "investigate_code_topic",
+        "search_entity_content",
+        "find_code"
+      ]
+    },
+    {
+      "intent": "get service context",
+      "limit": 5,
+      "catalog_free_top5": [
+        "get_service_context",
+        "get_entity_context",
+        "get_workload_context",
+        "get_repo_context",
+        "get_incident_context"
+      ],
+      "seeded_top5": [
+        "get_service_context",
+        "get_incident_context",
+        "get_workload_context",
+        "get_entity_context",
+        "get_repo_context"
+      ]
+    },
+    {
+      "intent": "get file content",
+      "limit": 5,
+      "catalog_free_top5": [
+        "get_file_content",
+        "get_entity_content",
+        "resolve_entity",
+        "search_file_content",
+        "list_repository_files"
+      ],
+      "seeded_top5": [
+        "get_file_content",
+        "search_file_content",
+        "resolve_entity",
+        "list_repository_files",
+        "get_entity_content"
+      ]
+    },
+    {
+      "intent": "find cross repo dead code",
+      "limit": 5,
+      "catalog_free_top5": [
+        "analyze_code_relationships",
+        "find_cross_repo_dead_code",
+        "find_dead_code",
+        "find_dead_iac",
+        "find_code_divergence"
+      ],
+      "seeded_top5": [
+        "analyze_code_relationships",
+        "find_cross_repo_dead_code",
+        "find_dead_code",
+        "investigate_dead_code",
+        "find_dead_iac"
+      ]
+    },
+    {
+      "intent": "search semantic context",
+      "limit": 5,
+      "catalog_free_top5": [
+        "search_semantic_context",
+        "get_entity_context",
+        "get_workload_context",
+        "get_service_context",
+        "get_semantic_capability_status"
+      ],
+      "seeded_top5": [
+        "search_semantic_context",
+        "get_semantic_capability_status",
+        "get_service_context",
+        "get_workload_context",
+        "list_semantic_documentation_observations"
+      ]
+    },
+    {
+      "intent": "investigate dead code",
+      "limit": 5,
+      "catalog_free_top5": [
+        "investigate_dead_code",
+        "investigate_code_topic",
+        "find_dead_code",
+        "investigate_change_surface",
+        "investigate_code_divergence"
+      ],
+      "seeded_top5": [
+        "investigate_dead_code",
+        "find_dead_code",
+        "investigate_code_topic",
+        "find_cross_repo_dead_code",
+        "investigate_hardcoded_secrets"
+      ]
+    },
+    {
+      "intent": "plan developer change",
+      "limit": 5,
+      "catalog_free_top5": [
+        "plan_developer_change",
+        "propose_terraform_import_plan",
+        "find_change_surface",
+        "analyze_pre_change_impact",
+        "compose_replatforming_plan"
+      ],
+      "seeded_top5": [
+        "plan_developer_change",
+        "compose_replatforming_plan",
+        "resolve_query_playbook",
+        "propose_terraform_import_plan",
+        "investigate_service"
+      ]
+    },
+    {
+      "intent": "get file lines",
+      "limit": 5,
+      "catalog_free_top5": [
+        "get_file_lines",
+        "list_repository_files",
+        "search_php_configuration",
+        "get_file_content",
+        "get_repository_language_inventory"
+      ],
+      "seeded_top5": [
+        "get_file_lines",
+        "list_repository_files",
+        "get_file_content",
+        "search_php_configuration",
+        "get_repository_language_inventory"
+      ]
+    },
+    {
+      "intent": "analyze pre change impact",
+      "limit": 5,
+      "catalog_free_top5": [
+        "analyze_pre_change_impact",
+        "find_change_surface",
+        "investigate_change_surface",
+        "analyze_infra_relationships",
+        "list_security_alert_reconciliations"
+      ],
+      "seeded_top5": [
+        "analyze_pre_change_impact",
+        "investigate_change_surface",
+        "find_change_surface",
+        "investigate_contract_impact",
+        "find_blast_radius"
+      ]
+    },
+    {
+      "intent": "get repo story",
+      "limit": 5,
+      "catalog_free_top5": [
+        "get_repo_story",
+        "get_workload_story",
+        "get_service_story",
+        "get_code_relationship_story",
+        "get_repo_context"
+      ],
+      "seeded_top5": [
+        "get_repo_story",
+        "get_workload_story",
+        "get_service_story",
+        "get_code_relationship_story",
+        "investigate_deployment_config"
+      ]
+    }
+  ]
+}

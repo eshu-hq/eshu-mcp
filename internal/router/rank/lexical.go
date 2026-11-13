@@ -58,8 +58,8 @@ const (
 // closed: with no visibility rule it cannot know which tools the caller may see.
 var ErrNilAllowed = errors.New("rank: allowed func is nil")
 
-// Lexical is a deterministic BM25-style router.Ranker over tool names and
-// descriptions.
+// Lexical is a deterministic BM25-style router.Ranker over tool names,
+// descriptions, and seeded catalog intent phrases.
 //
 // The corpus index is built once by New and shared read-only by every Rank
 // call, so a Lexical is safe for concurrent use. The index keeps the tools
@@ -70,29 +70,37 @@ var ErrNilAllowed = errors.New("rank: allowed func is nil")
 // slice must not be edited in place after New; an in-place edit is not
 // detected, and the index serves the text it saw at New.
 type Lexical struct {
-	idx    *index
-	builds atomic.Int64
+	idx *index
+	// entries are the seeded catalog rows the index was built with, kept
+	// so a rebuild over a different tools slice scores the same catalog.
+	entries map[string]registry.CatalogEntry
+	builds  atomic.Int64
 }
 
 var _ router.Ranker = (*Lexical)(nil)
 
-// New builds the ranker's index from the registry tools alone, without
-// catalog entries. Scoring uses tool names, descriptions, and input-schema
-// property names only; every tool keeps the conservative CostHigh default
-// and ties fall through Canonical (all false) to name and registry position.
-// The result stays deterministic for the same tools slice.
+// New builds the ranker's index from the registry tools and the seeded
+// catalog entries. A nil entries map — a contract predating the
+// router_catalog section — reproduces today's exact catalog-free behavior:
+// scoring uses tool names, descriptions, and input-schema property names
+// only; every tool keeps the conservative CostHigh default and ties fall
+// through Canonical (all false) to name and registry position. The result
+// stays deterministic for the same tools slice.
 //
 // Call it once per server start and hand Rank that same slice on every call,
-// so the index is reused instead of rebuilt.
-func New(tools []registry.ToolDefinition) *Lexical {
-	l := &Lexical{}
+// so the index is reused instead of rebuilt. Entries are fixed at
+// construction: Rank takes no per-request entries, so a future change that
+// needs them must also port the in-tree index identity check to cover the
+// entries map.
+func New(tools []registry.ToolDefinition, entries map[string]registry.CatalogEntry) *Lexical {
+	l := &Lexical{entries: entries}
 	l.idx = l.build(tools)
 	return l
 }
 
 func (l *Lexical) build(tools []registry.ToolDefinition) *index {
 	l.builds.Add(1)
-	return buildIndex(tools)
+	return buildIndex(tools, l.entries)
 }
 
 // scored is one matching tool before ordering.
