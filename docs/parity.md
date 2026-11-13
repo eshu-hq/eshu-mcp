@@ -11,30 +11,41 @@ name-by-name and position-by-position against the live source census with an
 independent re-extraction (the check script parses the source file again
 instead of trusting the seed script's memory).
 
-## Results (reseed, 2026-10-29: source `9922b49`, 169 tools; appendix #9670: 171 tools; appendix #10477: 172 tools; appendix #10535: 173 tools)
+## Results (reseed, 2026-11-13: source `93f481e3d2`, 173 tools, fix-07 part C)
 
 - `docs/source/CUTOVER_OWNERSHIP.md` is byte-identical to
-  `go/cmd/mcp-server/CUTOVER_OWNERSHIP.md` at
-  `9922b492d8a3a25ef87b39d38864b36ff522a6ce`:
+  `go/cmd/api/CUTOVER_OWNERSHIP.md` at
+  `93f481e3d261cb5b126d765834b4d688b67693b3`:
   `cmp` exited 0 and both files hash to
-  `1daf8a6d7637981a8db8d08485fad77561c4749bbd794d3c9671d79bfe7a85df`.
-- `contracts/tool-registry/v1/tools.json`: source census count 171, dest
-  count 173, order identical through the census tail. First tool `find_code`,
-  tail tools `search_php_configuration`, `list_ssm_host_inventory`, then the
-  `eshu#10477` appendix `list_service_api_endpoints` and the `eshu#10535`
-  appendix `list_service_downstream_consumers`. All 173 names
+  `ed6909ca4169804a120a14674842c11c111176a32d4ae92a832d9b88a874cf72`.
+- `contracts/tool-registry/v1/tools.json`: source census count 173, dest
+  count 173, order byte-identical to the source census. First tool
+  `find_code`; the former appendix pair `list_service_api_endpoints` and
+  `list_service_downstream_consumers` now sits at positions 117-118 in
+  source registration order, and the tail is
+  `list_runtime_version_declarations`, `search_dockerfile_installs`,
+  `search_php_configuration`, `list_ssm_host_inventory`. All 173 names
   unique. Census count constant still matches the source commit.
+- `contracts/tool-registry/v1/tool_definitions.json` gains the
+  `router_catalog` section: 173 rows keyed by tool name, every cost in
+  `low/moderate/high`, 34 canonical marks, every row carrying a non-empty
+  intent list of at most 7 phrases. The `eshu-hq/eshu-mcp#61` edge
+  contract (2 required-field additions, 34 selector sentences, 2 example
+  keys) is re-applied by `render.py` onto the verbatim facts, so the
+  generated file never needs hand edits. Batched core-side entry changes
+  in the same pin: `advisory_retracted` suppression state on the three
+  supply-chain impact tools, new `service_id`/`workload_id`/`environment`
+  group-by dimensions on `get_supply_chain_impact_inventory`, and
+  description refreshes on `list_collectors` and
+  `list_runtime_version_declarations`.
 - Envelope MIME `application/eshu.envelope+json`, dispatch timeout `30s`,
   response budget 262144 bytes, router limits 5/10: equal to the source
   census pins.
 
-The prior seed (2026-10-28, source `e4c385f4`, 168 tools ending at
-`list_runtime_version_declarations`) is superseded: the reseed restored the
-missing `search_dockerfile_installs` tool from `eshu-hq/eshu#9303`, and the
-#9670 appendix ports the two tools the source census appended after the
-reseed (`search_php_configuration`, `list_ssm_host_inventory`), verified
-verbatim against the in-tree census tail and routes at
-`b1748fc0b1b65d8f2ee29fbd58bbf5b2251d6a84`.
+The prior seed (2026-10-29, source `9922b49`, 173 tools with the
+`#10477`/`#10535` pair tail-appended ahead of census) is superseded: the
+pair now rides in source registration order, the census constant is 173,
+and the ownership map follows the in-tree server move to `go/cmd/api`.
 
 Run `python3 scripts/check-parity.py` to re-verify the in-repo invariants.
 Cross-repo byte-parity re-verification needs the source checkout; the

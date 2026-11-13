@@ -5,20 +5,29 @@ Refs `eshu-hq/eshu#8873`, part of `eshu-hq/eshu#6707`.
 ## Source
 
 - Repository: `github.com/eshu-hq/eshu`.
-- Commit: `9922b492d8a3a25ef87b39d38864b36ff522a6ce`
-  (`origin/main` at reseed time, 2026-10-29). The prior seed used
-  `e4c385f493494ed9d6c7f192b04ce0255361f621` (168 tools).
-- Ownership map: `go/cmd/mcp-server/CUTOVER_OWNERSHIP.md`, recorded by
-  merged `eshu-hq/eshu#9437` and tightened by `eshu-hq/eshu#9445`.
+- Commit: `93f481e3d261cb5b126d765834b4d688b67693b3`
+  (fix-07 part-B merge, `eshu-hq/eshu#10616`, reseed time 2026-11-13).
+  The prior seed used `9922b492d8a3a25ef87b39d38864b36ff522a6ce`
+  (173 tools).
+- Ownership map: `go/cmd/api/CUTOVER_OWNERSHIP.md` (the in-tree server
+  moved from `go/cmd/mcp-server` after `eshu-hq/eshu#9679`; the satellite
+  keeps a verbatim copy).
 - Destination plan (preparation only, nothing pushed by it):
   `docs/internal/evidence/8873-eshu-mcp-destination-plan.md` in the source
   tree.
 
-Note: the assigning brief said 170 tools. The source census pins 169
-(`censusToolCount = 169` in `go/internal/mcp/tool_registry_census_test.go`
-at the reseed commit). This seed follows the source: 169, ending at
-`search_dockerfile_installs` (restored from `eshu-hq/eshu#9303`, which the
-prior 168-tool seed predated).
+Note: the source census pins 173 (`censusToolCount = 173` in
+`go/internal/mcp/tool_registry_census_test.go` at the reseed commit).
+The former appendix tools (`search_php_configuration`,
+`list_ssm_host_inventory` from `#9670`; `list_service_api_endpoints`
+from `#10477`; `list_service_downstream_consumers` from `#10535`) are
+now in-census rows; the `#10477`/`#10535` pair sits at positions
+117-118 in source registration order, and `tool_order` follows the
+source census byte-for-byte. A set/order move is a contract-version
+matter — reported on `eshu-hq/eshu#10609`, not conflated with this
+reseed. The part-C reseed additionally renders the `router_catalog`
+section from the part-B seed facts (`TestZZEmitSeedFacts` in
+`go/internal/mcp/emit_seed_test.go`).
 
 Appendix (#9670): the source census appended two tools after the reseed —
 `search_php_configuration` (`go/internal/mcp/tools_content.go`,
@@ -53,16 +62,16 @@ count stay pinned at `9922b49`/171 while the served registry is 173.
 
 | This file | Source | Class |
 | --- | --- | --- |
-| `docs/source/CUTOVER_OWNERSHIP.md` | `go/cmd/mcp-server/CUTOVER_OWNERSHIP.md` at the source commit | Verbatim copy; byte-parity proven in `docs/parity.md` |
+| `docs/source/CUTOVER_OWNERSHIP.md` | `go/cmd/api/CUTOVER_OWNERSHIP.md` at the source commit | Verbatim copy; byte-parity proven in `docs/parity.md` |
 | `contracts/tool-registry/v1/tools.json` | `censusToolNames` in `go/internal/mcp/tool_registry_census_test.go`, plus router/dispatch/envelope pins from the same file | Derived surface; order and count proven equal in `docs/parity.md` |
 | `contracts/shared-shapes/v1/SHARED_SHAPES.md` | `go/internal/mcp/result/shape/shape.go`, `go/internal/mcp/contract/tool/contract.go`, `go/internal/mcp/contract/route/contract.go`, `go/internal/query/envelope_aliases.go` | References with hashes; no Go code moved |
 
 ## Hashes (source commit)
 
 - `CUTOVER_OWNERSHIP.md`:
-  `1daf8a6d7637981a8db8d08485fad77561c4749bbd794d3c9671d79bfe7a85df`
-  (prior seed: `71b005ee7305ca0768f38694ac6de237901d963df75d4077dd57e189bfadc89f`
-  at `e4c385f4`)
+  `ed6909ca4169804a120a14674842c11c111176a32d4ae92a832d9b88a874cf72`
+  (prior seed: `1daf8a6d7637981a8db8d08485fad77561c4749bbd794d3c9671d79bfe7a85df`
+  at `9922b49`)
 - `result/shape/shape.go`:
   `e2ca3bf593694d87aaa3207b5236f199f4ba42b2537ab3a199658d83140fd82b`
 - `contract/tool/contract.go`:

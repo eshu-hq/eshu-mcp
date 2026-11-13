@@ -4462,7 +4462,7 @@
           },
           "include_suppressed": {
             "default": false,
-            "description": "Include findings hidden by operator-asserted VEX or policy suppression (not_affected, accepted_risk, false_positive, ignored). Expired, provider-dismissed, and scope-mismatched findings are visible regardless because they keep audit signal.",
+            "description": "Include findings hidden by operator-asserted VEX or policy suppression (not_affected, accepted_risk, false_positive, ignored) or by a source retraction of the advisory (advisory_retracted). Expired, provider-dismissed, and scope-mismatched findings are visible regardless because they keep audit signal.",
             "type": "boolean"
           },
           "limit": {
@@ -4541,7 +4541,7 @@
             "type": "string"
           },
           "suppression_state": {
-            "description": "Optional reducer suppression-state filter. Operator-asserted suppressions (not_affected, accepted_risk, false_positive, ignored) require include_suppressed=true to appear.",
+            "description": "Optional reducer suppression-state filter. Hidden states (not_affected, accepted_risk, false_positive, ignored, advisory_retracted) require include_suppressed=true to appear.",
             "enum": [
               "active",
               "not_affected",
@@ -4550,7 +4550,8 @@
               "ignored",
               "expired",
               "provider_dismissed",
-              "scope_mismatch"
+              "scope_mismatch",
+              "advisory_retracted"
             ],
             "type": "string"
           },
@@ -4830,7 +4831,7 @@
           },
           "include_suppressed": {
             "default": false,
-            "description": "Include findings hidden by operator-asserted VEX or policy suppression.",
+            "description": "Include findings hidden by operator-asserted VEX or policy suppression, or by a source retraction of the advisory (advisory_retracted).",
             "type": "boolean"
           },
           "min_priority_score": {
@@ -4892,7 +4893,7 @@
             "type": "string"
           },
           "suppression_state": {
-            "description": "Optional reducer suppression-state filter. Operator-asserted suppressions require include_suppressed=true to be counted.",
+            "description": "Optional reducer suppression-state filter. Hidden states (operator suppressions and advisory_retracted) require include_suppressed=true to be counted.",
             "enum": [
               "active",
               "not_affected",
@@ -4901,7 +4902,8 @@
               "ignored",
               "expired",
               "provider_dismissed",
-              "scope_mismatch"
+              "scope_mismatch",
+              "advisory_retracted"
             ],
             "type": "string"
           },
@@ -4915,7 +4917,7 @@
       "name": "count_supply_chain_impact_findings"
     },
     {
-      "description": "Return a paginated grouped count of reducer-owned vulnerability impact findings along one dimension (impact_status, priority_bucket, severity, repository_id). Replaces the page-and-iterate caller pattern for ecosystem-level inventory questions.",
+      "description": "Return a paginated grouped count of reducer-owned vulnerability impact findings along one dimension (impact_status, priority_bucket, severity, repository_id, ecosystem, service_id, workload_id, environment). Replaces the page-and-iterate caller pattern for ecosystem-level inventory questions. The service_id, workload_id, and environment dimensions resolve at read time, count a multi-service finding in every group, and add per-bucket completeness plus distinct_findings, the distinct finding count over the whole filtered set (normally equal to the count tool total_findings; it can differ under a scope-id grant, while the winners read model is stale, or when copies of one finding differ on image_ref, detection_profile, or priority_bucket), ordered by max_priority_score, count, then value; compose them with a filter such as group_by=environment with service_id.",
       "inputSchema": {
         "properties": {
           "advisory_id": {
@@ -4940,13 +4942,16 @@
           },
           "group_by": {
             "default": "impact_status",
-            "description": "Grouping dimension. impact_status (default) groups by reducer status; priority_bucket groups by triage bucket; severity groups by CVSS severity bucket; repository_id groups by repository; ecosystem groups by package ecosystem.",
+            "description": "Grouping dimension. impact_status (default) groups by reducer status; priority_bucket groups by triage bucket; severity groups by CVSS severity bucket; repository_id groups by repository; ecosystem groups by package ecosystem; service_id, workload_id, and environment group by the runtime service, workload, or deployment environment each finding resolves to. A finding with two services counts in both service buckets, so bucket counts can sum above distinct_findings. Those three dimensions return per-bucket completeness (complete, partial, unattributed, read_model_unavailable) and an unattributed bucket (value empty, unattributed true) for findings with no resolved group; the unattributed bucket is never complete. They answer 503 when the grouped read model is not available (ESHU_SUPPLY_CHAIN_IMPACT_WINNERS_READ is off by default).",
             "enum": [
               "impact_status",
               "priority_bucket",
               "severity",
               "repository_id",
-              "ecosystem"
+              "ecosystem",
+              "service_id",
+              "workload_id",
+              "environment"
             ],
             "type": "string"
           },
@@ -4967,7 +4972,7 @@
           },
           "include_suppressed": {
             "default": false,
-            "description": "Include findings hidden by operator-asserted VEX or policy suppression before grouping.",
+            "description": "Include findings hidden by operator-asserted VEX or policy suppression, or by a source retraction of the advisory (advisory_retracted), before grouping.",
             "type": "boolean"
           },
           "limit": {
@@ -5043,7 +5048,7 @@
             "type": "string"
           },
           "suppression_state": {
-            "description": "Optional reducer suppression-state filter applied before grouping. Operator-asserted suppressions require include_suppressed=true to be included.",
+            "description": "Optional reducer suppression-state filter applied before grouping. Hidden states (operator suppressions and advisory_retracted) require include_suppressed=true to be included.",
             "enum": [
               "active",
               "not_affected",
@@ -5052,7 +5057,8 @@
               "ignored",
               "expired",
               "provider_dismissed",
-              "scope_mismatch"
+              "scope_mismatch",
+              "advisory_retracted"
             ],
             "type": "string"
           },
@@ -5826,6 +5832,106 @@
         "type": "object"
       },
       "name": "get_service_story"
+    },
+    {
+      "description": "Page a service's API surface endpoints in path, endpoint_id order. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. Returns the endpoints page with endpoint_count (the true total), detail_truncated, and next_offset (absent when the page is complete); repeat with offset set to next_offset until it is absent. The story and context dossiers keep only a 50-row api_surface preview and point here.",
+      "inputSchema": {
+        "properties": {
+          "environment": {
+            "description": "Optional environment context",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Endpoints per page. Defaults to 50 when absent; clamps into (0, 100].",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Rows to skip, in path, endpoint_id order. Defaults to 0 when absent; repeat the call with offset set to the previous page's next_offset until next_offset is absent.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "repo": {
+            "description": "Optional repository selector used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "repo_id": {
+            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "repository_id": {
+            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "service_id": {
+            "description": "Exact service identifier: a full scoped id (workload:repository:<repo_id>:<name>) or a workload:<name> handle, as listed in the candidates of an ambiguous answer. Selects one service on its own and wins over workload_id and service_name",
+            "type": "string"
+          },
+          "service_name": {
+            "description": "Optional service name selector when the caller starts from repository-scoped service story context",
+            "type": "string"
+          },
+          "workload_id": {
+            "description": "Service workload identifier, or a service name passed through the workload_id field",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_service_api_endpoints"
+    },
+    {
+      "description": "Page a service's downstream consumer repositories in (repository, repo_id) order. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. Returns the page with truncated, next_cursor (absent when the page is terminal), consumer_truncation_sources naming which read bound fired, searched_hostnames, and effective_read_bound. Repeat with after_repository/after_repo_id set to the previous page's next_cursor until next_cursor is absent. Counts are lower bounds, never totals.",
+      "inputSchema": {
+        "properties": {
+          "after_repo_id": {
+            "description": "Cursor: repo_id of the last row served on the previous page. Must be provided together with after_repository.",
+            "type": "string"
+          },
+          "after_repository": {
+            "description": "Cursor: repository of the last row served on the previous page. Must be provided together with after_repo_id; repeat the call with both set from next_cursor until next_cursor is absent.",
+            "type": "string"
+          },
+          "environment": {
+            "description": "Optional environment context",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Consumers per page. Defaults to 50 when absent; clamps into (0, 100].",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "repo": {
+            "description": "Optional repository selector used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "repo_id": {
+            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "repository_id": {
+            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "type": "string"
+          },
+          "service_id": {
+            "description": "Exact service identifier: a full scoped id (workload:repository:<repo_id>:<name>) or a workload:<name> handle, as listed in the candidates of an ambiguous answer. Selects one service on its own and wins over workload_id and service_name",
+            "type": "string"
+          },
+          "service_name": {
+            "description": "Optional service name selector when the caller starts from repository-scoped service story context",
+            "type": "string"
+          },
+          "workload_id": {
+            "description": "Service workload identifier, or a service name passed through the workload_id field",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_service_downstream_consumers"
     },
     {
       "description": "Plan a service investigation across related repositories, deployment sources, indexed docs, and evidence drilldowns. Select the service with service_id or service_name; service_id wins. repo separates only services that live in different repositories. When the answer is ambiguous, call again with service_id set to a candidate's next_selector value; a candidate with legacy_id true is a leftover, not the live workload; choose a scoped candidate.",
@@ -7009,7 +7115,7 @@
       "name": "get_fact_schema_version"
     },
     {
-      "description": "Return collector runtime status including coordinator-managed, direct-mode, disabled, and unregistered evidence categories. An instance with a failed_terminal work item updated inside its window (3 x scan_interval, 30 minute floor) and no later completed work item of the same instance for that scope reports health degraded plus a bounded last_failure_class (the per-collector-kind enum in the OpenAPI contract, extension_defined for a class an extension collector defines, or unknown), last_failure_operation, last_failure_terminal, and last_failure_at. An operator-acknowledged failure reads health partial (never healthy) with an acknowledged_failure object (bounded failure_class, failure_operation, failed_at, acknowledged_at; the operator's reason is admin-only) instead of degraded. Scoped callers receive only the per-kind health aggregate; last_failure_* and acknowledged_failure are withheld from them. A later completed work item of the same instance for that scope clears a failure, or an operator acknowledgement (POST /api/v0/admin/collector-failures/acknowledge) replaces degraded with partial; a later pending or retrying item does not clear it, and a failure no later run revisits ages out after the window. Failure messages and provider status codes are never returned.",
+      "description": "Return collector runtime status including coordinator-managed, direct-mode, disabled, and unregistered evidence categories. An instance with a failed_terminal work item updated inside its window (3 x scan_interval, 30 minute floor) and no later completed work item of the same instance for that scope reports health degraded plus a bounded last_failure_class (the per-collector-kind enum in the OpenAPI contract, extension_defined for a class an extension collector defines, or unknown), last_failure_operation, last_failure_terminal, and last_failure_at. An operator-acknowledged failure reads health at least partial (never healthy; a stale vulnerability source or a degraded failure on the same instance keeps the higher health) with an acknowledged_failure object (bounded failure_class, failure_operation, failed_at, acknowledged_at; the operator's reason is admin-only) instead of degraded. Scoped callers receive only the per-kind health aggregate; last_failure_* and acknowledged_failure are withheld from them. A later completed work item of the same instance for that scope clears a failure, or an operator acknowledgement (POST /api/v0/admin/collector-failures/acknowledge) replaces degraded with partial; a later pending or retrying item does not clear it, and a failure no later run revisits ages out after the window. Failure messages and provider status codes are never returned.",
       "inputSchema": {
         "properties": {},
         "required": [],
@@ -7451,7 +7557,7 @@
       "name": "list_repository_files"
     },
     {
-      "description": "List the runtime versions repositories declare (pin files such as .nvmrc, .tool-versions and rust-toolchain, package.json engines, volta and packageManager, and the go.mod go and toolchain directives), so a security question such as which repositories declare a Node major below 20 has one answer. Send runtime and major_below (or version_below such as 20.10) to compare; a comparison needs runtime. The comparison returns only declarations it can place (exact and partial specs). Range, alias (lts/*, node, system) and unresolved specs are never guessed: they are excluded and named in partial_reasons, with their counts in excluded_from_comparison. Read partial_reasons before concluding a fleet is clean. There is no effective-version view: every declaration is returned with its scope_dir (. at the repository root), so a root .nvmrc and a services/web/.nvmrc are separate rows. Rows are ordered by repo_id, relative_path, line_number, runtime and order_index. When truncated is true, pass next_cursor as cursor to continue. Use get_repo_context for one repository's declared-runtime summary.",
+      "description": "List the runtime versions repositories declare (pin files such as .nvmrc, .tool-versions, rust-toolchain and runtime.txt; package.json, go.mod, Composer and Python manifest constraints), so a security question such as which repositories declare a Node major below 20 has one answer. Send runtime and major_below (or version_below such as 20.10) to compare; a comparison needs runtime. The comparison returns only declarations it can place (exact and partial specs). Range, alias (lts/*, node, system) and unresolved specs are never guessed: they are excluded and named in partial_reasons, with their counts in excluded_from_comparison. Read partial_reasons before concluding a fleet is clean. There is no effective-version view: every declaration is returned with its scope_dir (. at the repository root), so a root .nvmrc and a services/web/.nvmrc are separate rows. Rows are ordered by repo_id, relative_path, line_number, runtime and order_index. When truncated is true, pass next_cursor as cursor to continue. Use get_repo_context for one repository's declared-runtime summary.",
       "inputSchema": {
         "properties": {
           "cursor": {
@@ -7483,7 +7589,7 @@
             "type": "string"
           },
           "source_kind": {
-            "description": "Exact declaring source: nvmrc, tool_versions, rust_toolchain, package_json_engines, package_json_volta, package_json_package_manager, go_mod_go, go_mod_toolchain, dockerfile_from or workflow_setup_version. At most 128 characters.",
+            "description": "Exact declaring source kind, such as nvmrc, go_mod_go, composer_json_require_php, pyproject_requires_python or runtime_txt. At most 128 characters.",
             "type": "string"
           },
           "version_below": {
@@ -7626,108 +7732,1808 @@
         "type": "object"
       },
       "name": "list_ssm_host_inventory"
-    },
-    {
-      "description": "Page a service's API surface endpoints in path, endpoint_id order. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. Returns the endpoints page with endpoint_count (the true total), detail_truncated, and next_offset (absent when the page is complete); repeat with offset set to next_offset until it is absent. The story and context dossiers keep only a 50-row api_surface preview and point here.",
-      "inputSchema": {
-        "properties": {
-          "environment": {
-            "description": "Optional environment context",
-            "type": "string"
-          },
-          "limit": {
-            "default": 50,
-            "description": "Endpoints per page. Defaults to 50 when absent; clamps into (0, 100].",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "offset": {
-            "default": 0,
-            "description": "Rows to skip, in path, endpoint_id order. Defaults to 0 when absent; repeat the call with offset set to the previous page's next_offset until next_offset is absent.",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "repo": {
-            "description": "Optional repository selector used with service_name. It separates only services in different repositories; use service_id for the rest",
-            "type": "string"
-          },
-          "repo_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
-            "type": "string"
-          },
-          "repository_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
-            "type": "string"
-          },
-          "service_id": {
-            "description": "Exact service identifier: a full scoped id (workload:repository:<repo_id>:<name>) or a workload:<name> handle, as listed in the candidates of an ambiguous answer. Selects one service on its own and wins over workload_id and service_name",
-            "type": "string"
-          },
-          "service_name": {
-            "description": "Optional service name selector when the caller starts from repository-scoped service story context",
-            "type": "string"
-          },
-          "workload_id": {
-            "description": "Service workload identifier, or a service name passed through the workload_id field",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "name": "list_service_api_endpoints"
-    },
-    {
-      "description": "Page a service's downstream consumer repositories in (repository, repo_id) order. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. Returns the page with truncated, next_cursor (absent when the page is terminal), consumer_truncation_sources naming which read bound fired, searched_hostnames, and effective_read_bound. Repeat with after_repository/after_repo_id set to the previous page's next_cursor until next_cursor is absent. Counts are lower bounds, never totals.",
-      "inputSchema": {
-        "properties": {
-          "after_repo_id": {
-            "description": "Cursor: repo_id of the last row served on the previous page. Must be provided together with after_repository.",
-            "type": "string"
-          },
-          "after_repository": {
-            "description": "Cursor: repository of the last row served on the previous page. Must be provided together with after_repo_id; repeat the call with both set from next_cursor until next_cursor is absent.",
-            "type": "string"
-          },
-          "environment": {
-            "description": "Optional environment context",
-            "type": "string"
-          },
-          "limit": {
-            "default": 50,
-            "description": "Consumers per page. Defaults to 50 when absent; clamps into (0, 100].",
-            "minimum": 1,
-            "type": "integer"
-          },
-          "repo": {
-            "description": "Optional repository selector used with service_name. It separates only services in different repositories; use service_id for the rest",
-            "type": "string"
-          },
-          "repo_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
-            "type": "string"
-          },
-          "repository_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
-            "type": "string"
-          },
-          "service_id": {
-            "description": "Exact service identifier: a full scoped id (workload:repository:<repo_id>:<name>) or a workload:<name> handle, as listed in the candidates of an ambiguous answer. Selects one service on its own and wins over workload_id and service_name",
-            "type": "string"
-          },
-          "service_name": {
-            "description": "Optional service name selector when the caller starts from repository-scoped service story context",
-            "type": "string"
-          },
-          "workload_id": {
-            "description": "Service workload identifier, or a service name passed through the workload_id field",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "name": "list_service_downstream_consumers"
     }
   ],
+  "router_catalog": {
+    "analyze_code_relationships": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "class hierarchy",
+        "who overrides this method",
+        "who modifies this variable",
+        "callers of function by query type",
+        "find importers",
+        "cross repo callers",
+        "module dependencies"
+      ]
+    },
+    "analyze_infra_relationships": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "what deploys what",
+        "what provisions what",
+        "what image does workload run",
+        "workloads running an image",
+        "lambda function image"
+      ]
+    },
+    "analyze_pre_change_impact": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "impact of this diff",
+        "analyze changed files before merge",
+        "pre change impact analysis",
+        "base head diff impact",
+        "what does this pr affect"
+      ]
+    },
+    "ask": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "ask a question",
+        "free form question about repositories",
+        "natural language question",
+        "answer with evidence",
+        "ask eshu"
+      ]
+    },
+    "build_evidence_citation_packet": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "citation packet from handles",
+        "hydrate file handles into citations",
+        "cite sources for answer",
+        "evidence citations"
+      ]
+    },
+    "calculate_cyclomatic_complexity": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "cyclomatic complexity of function",
+        "how complex is this function",
+        "complexity score for one function"
+      ]
+    },
+    "check_documentation_evidence_packet_freshness": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "is documentation packet current",
+        "evidence packet freshness",
+        "saved packet still valid",
+        "packet version up to date"
+      ]
+    },
+    "compare_code_paths": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "compare call paths between functions",
+        "alternate call paths",
+        "distinct paths from a to b",
+        "weakest edge on call path"
+      ]
+    },
+    "compare_environments": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "environment diff for a workload",
+        "difference between staging and prod",
+        "shared and dedicated dependencies across environments",
+        "workload across two environments"
+      ]
+    },
+    "compose_replatforming_plan": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "replatforming plan",
+        "migration plan to terraform",
+        "ordered migration waves",
+        "plan to bring service under iac",
+        "import ready and blocked items"
+      ]
+    },
+    "count_ci_cd_run_correlations": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "how many pipeline runs",
+        "ci run totals",
+        "count of run correlations by outcome",
+        "runs by provider count"
+      ]
+    },
+    "count_container_image_identities": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "how many container images",
+        "image identity totals",
+        "count of exact digest images",
+        "images resolved by tag count"
+      ]
+    },
+    "count_documentation_findings": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "how many documentation findings",
+        "doc finding totals",
+        "count of stale docs",
+        "findings by freshness state"
+      ]
+    },
+    "count_infra_resources": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "how many infrastructure resources",
+        "infrastructure resource totals",
+        "resource counts by provider",
+        "count of cloud resources"
+      ]
+    },
+    "count_package_registry_packages": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "how many packages",
+        "package totals by ecosystem",
+        "count of registry packages",
+        "number of npm packages"
+      ]
+    },
+    "count_repositories_by_language": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "how many repos use language",
+        "count of go repositories",
+        "number of python repositories",
+        "language repo count"
+      ]
+    },
+    "count_sbom_attestation_attachments": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "how many sboms",
+        "attestation totals",
+        "count of attached sboms",
+        "sbom attachment counts by status"
+      ]
+    },
+    "count_secrets_iam_posture": {
+      "canonical": true,
+      "cost": "low",
+      "intents": [
+        "secrets and iam posture summary",
+        "identity trust and secret access overview",
+        "iam posture counts",
+        "how risky is our secrets posture",
+        "posture gaps overview"
+      ]
+    },
+    "count_security_alert_reconciliations": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "how many security alerts",
+        "alert reconciliation totals",
+        "count of open provider alerts",
+        "alerts by provider state"
+      ]
+    },
+    "count_supply_chain_impact_findings": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "how many vulnerabilities",
+        "count of cve findings",
+        "vulnerability totals by severity",
+        "number of affected packages"
+      ]
+    },
+    "derive_visualization_packet": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "chart service evidence visually",
+        "derive diagram from answer",
+        "visualization from evidence",
+        "render answer as graph"
+      ]
+    },
+    "dispatch_cfg_summary": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "control flow graph summary",
+        "cfg for function",
+        "branches and loops summary",
+        "control flow of repository"
+      ]
+    },
+    "dispatch_pdg_summary": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "program dependence graph summary",
+        "pdg for function",
+        "control and data dependence",
+        "program dependence summary"
+      ]
+    },
+    "dispatch_reaching_def": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "reaching definitions",
+        "def use chains",
+        "where is variable defined",
+        "data flow definitions"
+      ]
+    },
+    "dispatch_taint_path": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "taint path evidence",
+        "tainted data flow",
+        "source to sink taint",
+        "taint analysis for repository"
+      ]
+    },
+    "execute_cypher_query": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "run cypher query",
+        "raw graph query",
+        "custom read only cypher",
+        "diagnostic graph query",
+        "query code graph directly"
+      ]
+    },
+    "execute_language_query": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "find functions in language",
+        "list classes written in go",
+        "language specific entity query",
+        "find structs by language",
+        "query by programming language"
+      ]
+    },
+    "explain_dependency_path": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "chain of dependencies between two things",
+        "how does a depend on b",
+        "dependency path between entities",
+        "why is this a dependency"
+      ]
+    },
+    "explain_iac_management_status": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "terraform ownership proof for one resource",
+        "why is resource unmanaged",
+        "evidence for management state",
+        "terraform vs cloud evidence for arn"
+      ]
+    },
+    "explain_supply_chain_impact": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "explain this vulnerability finding",
+        "why is this cve flagged",
+        "remediation for finding",
+        "evidence behind cve impact",
+        "path from advisory to workload"
+      ]
+    },
+    "export_cloud_runtime_drift_packet": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "export drift evidence packet",
+        "runtime drift investigation packet",
+        "shareable drift report",
+        "drift packet artifact"
+      ]
+    },
+    "export_deployable_unit_packet": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "deployable unit evidence packet",
+        "export deployable unit admission truth",
+        "admission decisions packet",
+        "deployable unit report"
+      ]
+    },
+    "export_supply_chain_impact_packet": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "export supply chain evidence packet",
+        "vulnerability investigation packet",
+        "shareable cve impact report",
+        "supply chain impact artifact"
+      ]
+    },
+    "find_blast_radius": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "blast radius",
+        "repos affected by change",
+        "resources affected by changing target",
+        "downstream impact of target"
+      ]
+    },
+    "find_change_surface": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "change surface of workload",
+        "change surface of terraform module",
+        "what depends on this cloud resource",
+        "workload change surface"
+      ]
+    },
+    "find_code": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "find code by name",
+        "search entities by case-sensitive name",
+        "substring entity name search",
+        "exact entity name lookup",
+        "page through name matches"
+      ]
+    },
+    "find_code_divergence": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "find duplicate functions",
+        "identical token streams",
+        "near duplicate implementations",
+        "wrapper bypass",
+        "missing call in cohort",
+        "convention outliers"
+      ]
+    },
+    "find_cross_repo_dead_code": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "dead code across repositories",
+        "producer repo unused symbols",
+        "unused exports kept live by consumers",
+        "cross repo unused code"
+      ]
+    },
+    "find_dead_code": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "find unused functions",
+        "potentially unused code",
+        "dead functions in repository",
+        "exclude decorated functions from dead code"
+      ]
+    },
+    "find_dead_iac": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "unused terraform modules",
+        "dead helm charts",
+        "unused kustomize paths",
+        "unused ansible roles",
+        "dead docker compose services"
+      ]
+    },
+    "find_function_call_chain": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "call chain between two functions",
+        "path from function a to function b",
+        "how does a reach b",
+        "shortest call path",
+        "transitive call chain"
+      ]
+    },
+    "find_infra_resources": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "find infrastructure resources",
+        "search terraform resources",
+        "search kubernetes resources",
+        "find cloud resources by name",
+        "search crossplane resources"
+      ]
+    },
+    "find_most_complex_functions": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "most complex functions",
+        "highest cyclomatic complexity",
+        "complexity hotspots in codebase",
+        "top complex functions"
+      ]
+    },
+    "find_symbol": {
+      "canonical": true,
+      "cost": "low",
+      "intents": [
+        "where is this symbol defined",
+        "find function definition",
+        "find class definition",
+        "locate symbol by name",
+        "fuzzy symbol search",
+        "go to definition"
+      ]
+    },
+    "find_unmanaged_resource_owners": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "who owns unmanaged resource",
+        "owner candidates for drifted resource",
+        "ownership packet for unmanaged resource",
+        "which repo should manage resource"
+      ]
+    },
+    "find_unmanaged_resources": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "unmanaged aws resources",
+        "resources not in terraform",
+        "click ops resources",
+        "cloud resources without iac owner",
+        "image version drift"
+      ]
+    },
+    "get_answer_narration_status": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "answer narration status",
+        "is narration enabled",
+        "narration retention posture",
+        "narration validator reasons"
+      ]
+    },
+    "get_capability_catalog": {
+      "canonical": true,
+      "cost": "low",
+      "intents": [
+        "what can eshu do",
+        "capability maturity",
+        "capability owners and gaps",
+        "supported capabilities list",
+        "feature maturity"
+      ]
+    },
+    "get_changed_since": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "what changed since",
+        "changes in repository since generation",
+        "diff since last index",
+        "changed facts since instant",
+        "what is new in repo"
+      ]
+    },
+    "get_ci_cd_run_correlation_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "runs grouped by outcome",
+        "ci runs by environment",
+        "pipeline inventory by repository",
+        "grouped run correlation counts"
+      ]
+    },
+    "get_code_relationship_story": {
+      "canonical": true,
+      "cost": "high",
+      "intents": [
+        "who calls this function",
+        "what does this function call",
+        "callers and callees of symbol",
+        "who imports this",
+        "relationship story for symbol",
+        "transitive callers"
+      ]
+    },
+    "get_collector_extraction_readiness": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "extraction readiness for one collector",
+        "extraction checklist for collector family",
+        "extraction blockers for collector"
+      ]
+    },
+    "get_collector_readiness": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "collector promotion readiness",
+        "which collectors are promoted",
+        "collector family proof status",
+        "collector blockers"
+      ]
+    },
+    "get_component_extension_diagnostics": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "extension diagnostics",
+        "why is extension failing",
+        "extension digest and lifecycle",
+        "component extension policy status"
+      ]
+    },
+    "get_container_image_identity_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "images grouped by outcome",
+        "image identity strength breakdown",
+        "image inventory by repository",
+        "grouped image identity counts"
+      ]
+    },
+    "get_documentation_evidence_packet": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "documentation evidence packet",
+        "evidence for documentation finding",
+        "proof behind doc finding",
+        "evidence packet by finding id"
+      ]
+    },
+    "get_documentation_finding_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "doc findings grouped by status",
+        "documentation findings by type",
+        "findings by source",
+        "grouped documentation finding counts"
+      ]
+    },
+    "get_ecosystem_overview": {
+      "canonical": true,
+      "cost": "low",
+      "intents": [
+        "ecosystem overview",
+        "high level view of all repos",
+        "repos tiers and infrastructure counts",
+        "cross repo relationship summary",
+        "what is indexed"
+      ]
+    },
+    "get_entity_content": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "read function body",
+        "get entity source",
+        "full docstring of entity",
+        "source for entity id",
+        "show code of symbol"
+      ]
+    },
+    "get_entity_context": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "context for entity id",
+        "entity neighborhood",
+        "details of canonical entity",
+        "relationships of entity"
+      ]
+    },
+    "get_fact_schema_version": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "schema version for fact kind",
+        "is collector fact version supported",
+        "classify candidate fact version",
+        "fact kind compatibility"
+      ]
+    },
+    "get_file_content": {
+      "canonical": true,
+      "cost": "low",
+      "intents": [
+        "read file source",
+        "show file contents",
+        "get source of file",
+        "open file in repository",
+        "read repo file by path"
+      ]
+    },
+    "get_file_lines": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "read lines of file",
+        "show line range",
+        "get lines 10 to 40",
+        "excerpt of file",
+        "view part of a file"
+      ]
+    },
+    "get_freshness_causality": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "why is this answer stale",
+        "freshness causality",
+        "pending generation or reducer backlog",
+        "stale data cause",
+        "why is data out of date"
+      ]
+    },
+    "get_generation_lifecycle": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "generation lifecycle",
+        "active and superseded generations",
+        "failed generations for scope",
+        "generation history"
+      ]
+    },
+    "get_graph_summary_packet": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "bounded graph overview packet",
+        "hot entities by call degree",
+        "relationship type counts",
+        "summary of repo graph shape",
+        "summary first graph packet"
+      ]
+    },
+    "get_hosted_governance_status": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "hosted governance status",
+        "policy mode and tenancy",
+        "egress and retention policy",
+        "audit and redaction posture"
+      ]
+    },
+    "get_hosted_readiness": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "is the deployment ready",
+        "hosted readiness report",
+        "queue drained and collectors complete",
+        "api and mcp readback ready"
+      ]
+    },
+    "get_iac_management_status": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "is this resource managed by terraform",
+        "iac management status",
+        "safety gate for resource",
+        "management state of arn"
+      ]
+    },
+    "get_incident_context": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "incident context",
+        "who is on call for service",
+        "pagerduty routing for service",
+        "what changed before incident",
+        "incident evidence packet"
+      ]
+    },
+    "get_index_status": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "index status",
+        "is indexing finished",
+        "latest checkpointed index status",
+        "repositories checkpointed in latest index run"
+      ]
+    },
+    "get_infra_resource_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "infrastructure inventory grouped by dimension",
+        "resources by environment",
+        "resources by resource category",
+        "grouped infra resource counts"
+      ]
+    },
+    "get_ingester_status": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "status of one ingester",
+        "ingester by name",
+        "single ingester health"
+      ]
+    },
+    "get_operator_control_plane": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "is eshu healthy",
+        "operator control plane",
+        "queue depth and stuck work",
+        "reducer backlog",
+        "collector promotion verdicts",
+        "runtime health overview"
+      ]
+    },
+    "get_package_registry_package_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "packages grouped by ecosystem",
+        "package inventory by namespace",
+        "packages by visibility",
+        "grouped package counts"
+      ]
+    },
+    "get_relationship_evidence": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "relationship evidence by resolved id",
+        "evidence behind relationship",
+        "confidence basis for edge",
+        "dereference evidence pointer"
+      ]
+    },
+    "get_replatforming_rollups": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "replatforming rollups",
+        "readiness by account and environment",
+        "import ready vs needs review counts",
+        "migration progress summary"
+      ]
+    },
+    "get_repo_context": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "full repository context",
+        "repo entry points and infrastructure",
+        "repo api surface",
+        "repository relationships and deployment",
+        "everything about this repo"
+      ]
+    },
+    "get_repo_story": {
+      "canonical": true,
+      "cost": "high",
+      "intents": [
+        "what does this repo do",
+        "repository story",
+        "explain this repository",
+        "repo overview narrative",
+        "summarize repository purpose"
+      ]
+    },
+    "get_repo_summary": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "quick repo summary",
+        "repo file count and languages",
+        "repository identity and coverage",
+        "lightweight repo overview"
+      ]
+    },
+    "get_repository_coverage": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "repository index coverage",
+        "is repo fully indexed",
+        "coverage completeness for repo",
+        "indexing coverage state"
+      ]
+    },
+    "get_repository_freshness": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "did eshu pick up latest commit",
+        "repository commit receipt",
+        "is repo build complete",
+        "repo freshness verdict"
+      ]
+    },
+    "get_repository_language_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "language breakdown",
+        "language buckets across index",
+        "files per language",
+        "language inventory of ecosystem"
+      ]
+    },
+    "get_repository_stats": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "repository statistics",
+        "entity counts for repository",
+        "repo size stats",
+        "how big is this repository"
+      ]
+    },
+    "get_sbom_attestation_attachment_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "sbom attachments grouped by status",
+        "attestations by artifact kind",
+        "sbom inventory by subject digest",
+        "grouped attestation counts"
+      ]
+    },
+    "get_security_alert_reconciliation_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "alerts grouped by status",
+        "alert reconciliation by package",
+        "provider alert inventory",
+        "grouped alert counts"
+      ]
+    },
+    "get_semantic_capability_status": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "semantic extraction status",
+        "is llm extraction enabled",
+        "semantic provider profiles",
+        "semantic queue and budget"
+      ]
+    },
+    "get_service_changed_since": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "what changed for service since",
+        "service changes since generation",
+        "service evidence diff",
+        "service materialization changes"
+      ]
+    },
+    "get_service_context": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "service context by workload id",
+        "service workload selector context",
+        "context for service name"
+      ]
+    },
+    "get_service_intelligence_report": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "service intelligence report",
+        "code to runtime trace for service",
+        "service supply chain and incidents",
+        "one call service report"
+      ]
+    },
+    "get_service_story": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "explain this service",
+        "service dossier",
+        "service story",
+        "service api surface and dependencies",
+        "who consumes this service",
+        "onboard to service"
+      ]
+    },
+    "get_supply_chain_impact_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "vulnerabilities grouped by priority",
+        "impact findings by repository",
+        "vulnerability inventory by severity",
+        "grouped cve impact counts"
+      ]
+    },
+    "get_surface_inventory": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "surface inventory",
+        "list all mcp tools and api routes",
+        "readiness of each surface",
+        "implemented vs partial surfaces"
+      ]
+    },
+    "get_vulnerability_scanner_read_contract": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "vulnerability scanner read contract",
+        "supported vulnerability filters",
+        "remediation packet schema",
+        "scanner api contract"
+      ]
+    },
+    "get_workload_context": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "workload context",
+        "environment specific workload context",
+        "logical workload context",
+        "workload by canonical id"
+      ]
+    },
+    "get_workload_story": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "workload story",
+        "explain this workload",
+        "structured workload narrative",
+        "what does workload run"
+      ]
+    },
+    "inspect_call_graph_metrics": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "recursive functions",
+        "hub functions",
+        "most connected functions",
+        "highly called functions",
+        "call graph metrics"
+      ]
+    },
+    "inspect_code_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "list functions in file",
+        "list classes in repository",
+        "decorated methods",
+        "documented functions",
+        "dataclasses in repo",
+        "code structure inventory"
+      ]
+    },
+    "inspect_code_quality": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "code quality metrics",
+        "refactoring candidates",
+        "long functions",
+        "functions with many arguments",
+        "complexity and length hotspots"
+      ]
+    },
+    "investigate_change_surface": {
+      "canonical": true,
+      "cost": "high",
+      "intents": [
+        "what breaks if i change this",
+        "change impact investigation",
+        "impact of changing service or module",
+        "transitive impact surface",
+        "who is affected by this change"
+      ]
+    },
+    "investigate_code_divergence": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "drill into divergence finding",
+        "divergence finding by fingerprint",
+        "follow up on duplicate pair",
+        "members of duplicate cluster"
+      ]
+    },
+    "investigate_code_topic": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "where is this behavior implemented",
+        "find code for a topic",
+        "explore feature implementation",
+        "which files handle this",
+        "broad code topic search"
+      ]
+    },
+    "investigate_contract_impact": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "api contract impact",
+        "who consumes this http endpoint",
+        "cross repo contract consumers",
+        "breaking api change impact"
+      ]
+    },
+    "investigate_dead_code": {
+      "canonical": true,
+      "cost": "high",
+      "intents": [
+        "what code looks dead",
+        "unused functions with coverage",
+        "dead code candidates",
+        "unreferenced code with exactness blockers",
+        "find dead code safely"
+      ]
+    },
+    "investigate_deployment_config": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "deployment configuration story",
+        "image tag source",
+        "helm values layers",
+        "resource limits for service",
+        "what config influences deployment"
+      ]
+    },
+    "investigate_hardcoded_secrets": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "hardcoded secrets",
+        "api keys in code",
+        "committed passwords",
+        "private keys in repository",
+        "risky literals",
+        "leaked tokens in source"
+      ]
+    },
+    "investigate_import_dependencies": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "which modules import this module",
+        "import cycles",
+        "package import cycle",
+        "imports by file",
+        "importers of package",
+        "cross module calls"
+      ]
+    },
+    "investigate_resource": {
+      "canonical": true,
+      "cost": "high",
+      "intents": [
+        "what uses this database",
+        "what uses this queue",
+        "who uses this bucket",
+        "investigate cloud resource",
+        "resource users and provisioning repo"
+      ]
+    },
+    "investigate_service": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "plan a service investigation",
+        "investigate service across repos",
+        "service docs and deployment sources",
+        "service evidence drilldown"
+      ]
+    },
+    "list_admission_decisions": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "why was candidate rejected",
+        "correlation admission decisions",
+        "ambiguous or stale correlations",
+        "admission state for anchor"
+      ]
+    },
+    "list_advisory_evidence": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "advisory evidence for cve",
+        "ghsa advisory lookup",
+        "advisories for package",
+        "source advisory records"
+      ]
+    },
+    "list_aws_runtime_drift_findings": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "aws runtime drift",
+        "aws drift reducer findings",
+        "aws drift rejected promotions",
+        "aws account drift"
+      ]
+    },
+    "list_changed_since_poisoned_links": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "poisoned changed since links",
+        "retrying changed since cursor",
+        "changed since counting failures",
+        "stuck changed since scope"
+      ]
+    },
+    "list_ci_cd_run_correlations": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "ci cd runs for commit",
+        "pipeline run correlation",
+        "which build produced this image",
+        "deployment runs by environment",
+        "workflow run for artifact digest"
+      ]
+    },
+    "list_cloud_resource_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "cloud resource inventory",
+        "multi cloud resource identities",
+        "resources by management origin",
+        "list cloud resources by provider"
+      ]
+    },
+    "list_cloud_runtime_drift_findings": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "cloud runtime drift",
+        "drift between cloud and terraform",
+        "aws gcp azure drift findings",
+        "resources that drifted from code",
+        "multi cloud drift list"
+      ]
+    },
+    "list_codeowners_ownership": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "codeowners rules",
+        "who owns this path",
+        "effective owner of repository",
+        "codeowners declarations"
+      ]
+    },
+    "list_collector_extraction_readiness": {
+      "canonical": true,
+      "cost": "low",
+      "intents": [
+        "collector extraction readiness",
+        "which collectors can move out of tree",
+        "extraction candidates",
+        "collector extraction catalog"
+      ]
+    },
+    "list_collectors": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "collector runtime status",
+        "which collectors are running",
+        "which collectors are enabled",
+        "disabled or unregistered collectors"
+      ]
+    },
+    "list_component_extensions": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "component extensions",
+        "installed extensions",
+        "failed or revoked extensions",
+        "extension inventory"
+      ]
+    },
+    "list_container_image_identities": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "container image identities",
+        "image digest for tag",
+        "which image is this reference",
+        "image to source repository bridge",
+        "oci repository images"
+      ]
+    },
+    "list_container_image_tag_history": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "image tag history",
+        "digest changes for tag",
+        "when did tag move",
+        "tag to digest timeline"
+      ]
+    },
+    "list_dead_letter_work_items": {
+      "canonical": true,
+      "cost": "low",
+      "intents": [
+        "dead letter queue",
+        "failed work items",
+        "why is work stuck",
+        "dead lettered reducer domains",
+        "failure class counts"
+      ]
+    },
+    "list_documentation_facts": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "documentation facts",
+        "collected documentation sections",
+        "doc links and mentions",
+        "claim candidates from docs"
+      ]
+    },
+    "list_documentation_findings": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "documentation findings",
+        "stale documentation claims",
+        "docs that disagree with code",
+        "documentation truth findings",
+        "doc drift list"
+      ]
+    },
+    "list_fact_schema_versions": {
+      "canonical": true,
+      "cost": "low",
+      "intents": [
+        "fact schema versions",
+        "supported fact kinds",
+        "core fact kind registry",
+        "which schema versions are supported"
+      ]
+    },
+    "list_indexed_repositories": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "list repositories",
+        "how many repositories are indexed",
+        "indexed repository names",
+        "all indexed repos",
+        "repository count"
+      ]
+    },
+    "list_ingesters": {
+      "canonical": true,
+      "cost": "low",
+      "intents": [
+        "ingester status",
+        "which ingesters are configured",
+        "are ingesters running",
+        "repo sync and parse status"
+      ]
+    },
+    "list_investigation_workflows": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "what guided investigations exist",
+        "guided workflows",
+        "workflow catalog",
+        "available investigations"
+      ]
+    },
+    "list_kubernetes_correlations": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "kubernetes workload ownership",
+        "workloads in namespace",
+        "which cluster runs image",
+        "kubernetes drift correlation"
+      ]
+    },
+    "list_observability_coverage_correlations": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "alarm and dashboard coverage",
+        "is this service monitored",
+        "missing observability coverage",
+        "log and trace coverage gaps"
+      ]
+    },
+    "list_package_registry_correlations": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "who owns this package",
+        "package publication evidence",
+        "which repo consumes package",
+        "package ownership candidates",
+        "manifest backed package consumption"
+      ]
+    },
+    "list_package_registry_dependencies": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "package dependencies",
+        "dependency edges of package version",
+        "what does this package depend on",
+        "package native dependencies"
+      ]
+    },
+    "list_package_registry_packages": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "list packages in registry",
+        "find package by name",
+        "package identities by ecosystem",
+        "npm or pypi package lookup",
+        "registry package list"
+      ]
+    },
+    "list_package_registry_versions": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "package versions",
+        "list versions of package",
+        "release history of package",
+        "version identities for package"
+      ]
+    },
+    "list_query_playbooks": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "list playbooks",
+        "available query playbooks",
+        "playbook catalog",
+        "prompt families"
+      ]
+    },
+    "list_reducer_input_invalid_facts": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "invalid facts quarantined by reducer",
+        "facts missing required field",
+        "reducer decode failures",
+        "quarantined facts"
+      ]
+    },
+    "list_relationship_edges": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "list relationship edges by verb",
+        "typed graph edges",
+        "edges stamped by tool",
+        "browse relationship edges"
+      ]
+    },
+    "list_repositories_by_language": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "repositories written in language",
+        "which repos use python",
+        "list go repositories",
+        "repos containing typescript",
+        "repos by language"
+      ]
+    },
+    "list_repository_files": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "list files in repository",
+        "directory tree of repo",
+        "browse repository files",
+        "files by language in repo",
+        "repo file listing"
+      ]
+    },
+    "list_runtime_version_declarations": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "repositories declaring a runtime version",
+        "which repos use node below 20",
+        "end of life runtime declarations",
+        "declared node python go versions",
+        "pinned runtime versions across repositories"
+      ]
+    },
+    "list_sbom_attestation_attachments": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "sbom for image",
+        "attestations for image digest",
+        "sbom attachment evidence",
+        "which images have an sbom",
+        "provenance attestations"
+      ]
+    },
+    "list_secrets_iam_identity_trust_chains": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "identity trust chains",
+        "workload to service account to iam role",
+        "vault policy trust chain",
+        "irsa role trust"
+      ]
+    },
+    "list_secrets_iam_posture_gaps": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "missing secrets iam evidence",
+        "posture gaps",
+        "permission hidden iam evidence",
+        "why is trust chain not exact"
+      ]
+    },
+    "list_secrets_iam_privilege_posture_observations": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "risky iam trust",
+        "role with external trust and no external id",
+        "privilege posture observations",
+        "overly broad iam role"
+      ]
+    },
+    "list_secrets_iam_secret_access_paths": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "who can read this secret",
+        "vault policy to kv path",
+        "secret access paths",
+        "reachable secret paths"
+      ]
+    },
+    "list_security_alert_reconciliations": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "provider security alerts",
+        "dependabot alert reconciliation",
+        "github security alerts vs eshu impact",
+        "alerts by repository",
+        "alert state for cve"
+      ]
+    },
+    "list_semantic_code_hints": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "llm code hints",
+        "semantic code hints",
+        "non canonical code hints",
+        "corroborated code hints"
+      ]
+    },
+    "list_semantic_documentation_observations": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "llm documentation observations",
+        "semantic doc observations",
+        "opt in semantic extraction results",
+        "documentation observations with truth basis"
+      ]
+    },
+    "list_service_api_endpoints": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "list service api endpoints",
+        "all endpoints of a service",
+        "full service api surface",
+        "page service endpoints"
+      ]
+    },
+    "list_service_catalog_correlations": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "service catalog ownership",
+        "service owner from catalog",
+        "catalog drift for service",
+        "backstage descriptor correlation"
+      ]
+    },
+    "list_service_downstream_consumers": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "list service consumers",
+        "all consumers of a service",
+        "full downstream consumer set",
+        "page service consumers"
+      ]
+    },
+    "list_ssm_host_inventory": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "ssm host inventory",
+        "instances by ssm inventory",
+        "ssm managed instances with platform",
+        "application inventory per host"
+      ]
+    },
+    "list_supply_chain_impact_findings": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "which cves affect us",
+        "vulnerability impact findings",
+        "vulnerable packages in repository",
+        "cve impact by image digest",
+        "affected vs not affected findings"
+      ]
+    },
+    "list_terraform_config_state_drift_findings": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "terraform config vs state drift",
+        "state snapshot drift",
+        "terraform address drift",
+        "config state mismatch"
+      ]
+    },
+    "list_work_item_evidence": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "jira work item evidence",
+        "tickets for service",
+        "work items by project",
+        "issue evidence by key"
+      ]
+    },
+    "plan_developer_change": {
+      "canonical": false,
+      "cost": "high",
+      "intents": [
+        "plan this code change",
+        "developer change plan",
+        "ordered actions and tests for change",
+        "risk of this change",
+        "what tests to run"
+      ]
+    },
+    "propose_terraform_import_plan": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "terraform import plan",
+        "generate terraform import blocks",
+        "import candidates for unmanaged resources",
+        "terraform import commands"
+      ]
+    },
+    "report_code_divergence": {
+      "canonical": true,
+      "cost": "moderate",
+      "intents": [
+        "duplicate code rollup",
+        "parallel implementations summary",
+        "code divergence counts by kind",
+        "copy paste drift overview",
+        "how much duplicated code"
+      ]
+    },
+    "resolve_entity": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "resolve entity name to id",
+        "exact entity name resolution",
+        "get entity id for name",
+        "disambiguate entity"
+      ]
+    },
+    "resolve_investigation_workflow": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "guided investigation next calls",
+        "what should i check next in this investigation",
+        "recommended next calls for missing evidence",
+        "investigation plan from evidence state"
+      ]
+    },
+    "resolve_query_playbook": {
+      "canonical": true,
+      "cost": "low",
+      "intents": [
+        "call plan for question",
+        "resolve playbook",
+        "which tools answer this question",
+        "ordered call sequence",
+        "query playbook plan"
+      ]
+    },
+    "search_dockerfile_installs": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "which dockerfiles install this package",
+        "dockerfile package install declarations",
+        "find dockerfile downloads by name",
+        "search source image build installs"
+      ]
+    },
+    "search_entity_content": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "search function source snippets",
+        "grep entity source",
+        "find code containing text",
+        "search cached entity source",
+        "text search in function bodies"
+      ]
+    },
+    "search_file_content": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "search file text",
+        "grep repositories for string",
+        "find files containing text",
+        "substring search across files",
+        "full text search source files"
+      ]
+    },
+    "search_php_configuration": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "which repositories use mod php",
+        "find php ini directive",
+        "php configuration declarations",
+        "which repositories set memory limit",
+        "find php fpm pools"
+      ]
+    },
+    "search_registry_bundles": {
+      "canonical": false,
+      "cost": "low",
+      "intents": [
+        "search package bundles",
+        "find package by purl",
+        "registry catalog search",
+        "package bundle by namespace"
+      ]
+    },
+    "search_semantic_context": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "search curated context",
+        "semantic context search for repo",
+        "curated eshu context",
+        "context search with truth metadata"
+      ]
+    },
+    "trace_deployment_chain": {
+      "canonical": true,
+      "cost": "high",
+      "intents": [
+        "how is this deployed",
+        "deployment chain",
+        "gitops application for service",
+        "trace deployment of service",
+        "deployment path to cluster"
+      ]
+    },
+    "trace_exposure_path": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "internet exposed handler reaches secret",
+        "exposure path to cloud sink",
+        "reachability to privileged iam action",
+        "handler to sql table path",
+        "attack surface reachability"
+      ]
+    },
+    "trace_resource_to_code": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "which code owns this resource",
+        "trace resource to repository",
+        "infrastructure resource to source code",
+        "terraform resource owner repo"
+      ]
+    },
+    "trace_route_callers": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "who calls this http route handler",
+        "route handler callers",
+        "workloads impacted by route",
+        "framework route to callers"
+      ]
+    },
+    "visualize_graph_query": {
+      "canonical": false,
+      "cost": "moderate",
+      "intents": [
+        "visualize graph",
+        "render cypher result as graph",
+        "draw nodes and edges",
+        "graph visualization packet"
+      ]
+    }
+  },
   "router_tools": [
     {
       "description": "Find the Eshu tools that fit a task. Describe what you want to do in intent, optionally add known entity ids in anchors, and get back ranked candidates with a reason, cost, input schema, and example arguments. Then run one with call_tool.",
@@ -7805,7 +9611,7 @@
       ]
     },
     "census_test": "go/internal/mcp/tool_registry_census_test.go",
-    "commit": "9922b492d8a3a25ef87b39d38864b36ff522a6ce",
+    "commit": "93f481e3d261cb5b126d765834b4d688b67693b3",
     "note": "Served definitions are verbatim source facts; tools/list serves registry_tools in order.",
     "repo": "github.com/eshu-hq/eshu",
     "schema_census_test": "go/internal/mcp/tool_registry_schema_census_test.go"
