@@ -1,7 +1,6 @@
 package servicecontexttools
 
 import (
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -53,9 +52,14 @@ func Route(toolName string, args routecontract.Arguments) (routecontract.Request
 // optional repo and environment) so the report and the story address the same
 // service.
 func serviceIntelligenceReportRoute(args routecontract.Arguments) (routecontract.Request, error) {
-	selector := firstSelector(args, "service_id", "workload_id", "service_name")
+	keys := []string{"service_id", "workload_id", "service_name"}
+	selector := firstSelector(args, keys...)
 	if selector == "" {
-		return routecontract.Request{}, fmt.Errorf("get_service_intelligence_report requires service_id, workload_id, or service_name")
+		return routecontract.Request{}, &routecontract.MissingSelectorError{
+			Tool:    "get_service_intelligence_report",
+			Fields:  keys,
+			Message: "get_service_intelligence_report requires service_id, workload_id, or service_name",
+		}
 	}
 	q := map[string]string{}
 	if env := args.String("environment"); env != "" {
@@ -91,9 +95,17 @@ func serviceSelectorRoute(args routecontract.Arguments, toolName string, suffix 
 	selector := firstSelector(args, keys...)
 	if selector == "" {
 		if suffix == "story" {
-			return routecontract.Request{}, fmt.Errorf("%s requires service_id, workload_id, or service_name", toolName)
+			return routecontract.Request{}, &routecontract.MissingSelectorError{
+				Tool:    toolName,
+				Fields:  keys,
+				Message: toolName + " requires service_id, workload_id, or service_name",
+			}
 		}
-		return routecontract.Request{}, fmt.Errorf("%s requires workload_id", toolName)
+		return routecontract.Request{}, &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  keys,
+			Message: toolName + " requires workload_id",
+		}
 	}
 	q := map[string]string{}
 	if env := args.String("environment"); env != "" {
@@ -142,9 +154,14 @@ func serviceSelectorRoute(args routecontract.Arguments, toolName string, suffix 
 // repo and environment) and page parameters. limit/offset travel only when the
 // caller names them so the handler owns defaults, clamping, and 400s.
 func serviceAPIEndpointsRoute(args routecontract.Arguments) (routecontract.Request, error) {
-	selector := firstSelector(args, "service_id", "workload_id", "service_name")
+	keys := []string{"service_id", "workload_id", "service_name"}
+	selector := firstSelector(args, keys...)
 	if selector == "" {
-		return routecontract.Request{}, fmt.Errorf("list_service_api_endpoints requires service_id, workload_id, or service_name")
+		return routecontract.Request{}, &routecontract.MissingSelectorError{
+			Tool:    "list_service_api_endpoints",
+			Fields:  keys,
+			Message: "list_service_api_endpoints requires service_id, workload_id, or service_name",
+		}
 	}
 	q := map[string]string{}
 	if env := args.String("environment"); env != "" {
@@ -177,9 +194,14 @@ func serviceAPIEndpointsRoute(args routecontract.Arguments) (routecontract.Reque
 // only when the caller names them so the handler owns defaults, clamping,
 // and 400s.
 func serviceDownstreamConsumersRoute(args routecontract.Arguments) (routecontract.Request, error) {
-	selector := firstSelector(args, "service_id", "workload_id", "service_name")
+	keys := []string{"service_id", "workload_id", "service_name"}
+	selector := firstSelector(args, keys...)
 	if selector == "" {
-		return routecontract.Request{}, fmt.Errorf("list_service_downstream_consumers requires service_id, workload_id, or service_name")
+		return routecontract.Request{}, &routecontract.MissingSelectorError{
+			Tool:    "list_service_downstream_consumers",
+			Fields:  keys,
+			Message: "list_service_downstream_consumers requires service_id, workload_id, or service_name",
+		}
 	}
 	q := map[string]string{}
 	if env := args.String("environment"); env != "" {
@@ -215,9 +237,14 @@ func serviceDownstreamConsumersRoute(args routecontract.Arguments) (routecontrac
 // selector is refused here by name instead of reaching the handler as an empty
 // path segment.
 func investigateServiceRoute(args routecontract.Arguments) (routecontract.Request, error) {
-	serviceName := firstSelector(args, "service_id", "service_name")
+	keys := []string{"service_id", "service_name"}
+	serviceName := firstSelector(args, keys...)
 	if serviceName == "" {
-		return routecontract.Request{}, fmt.Errorf("investigate_service requires service_id or service_name")
+		return routecontract.Request{}, &routecontract.MissingSelectorError{
+			Tool:    "investigate_service",
+			Fields:  keys,
+			Message: "investigate_service requires service_id or service_name",
+		}
 	}
 	q := map[string]string{
 		"environment": args.String("environment"),

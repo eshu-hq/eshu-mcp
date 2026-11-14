@@ -218,6 +218,21 @@ schema validation produces.
   `TestResolveRouteRefusesMissingSelector`, and the envelope by the
   `call_tool` tests in `internal/router/call_invalid_arguments_test.go`.
 
+### Missing-selector structured refusal (eshu-hq/eshu-mcp#73, slice 1)
+
+Deliberate divergence from the plain-text rendering above. Six tools whose
+schemas deliberately stay open (the `get_repo_summary` repo_id/repo_name
+pair and the service selector groups) pass the schema gate and previously
+fell through to the plain-text route refusal. Those refusals now carry
+`routecontract.MissingSelectorError` (tool plus selector fields in route
+precedence order) and render the canonical
+`mcp_router_invalid_arguments` envelope with `details.tool` and
+`details.fields`, on both the direct `tools/call` and routed `call_tool`
+paths, which share `ToolErrorResultForCall`. Refusal texts are
+byte-identical, so `TestResolveRouteRefusesMissingSelector` still holds;
+the envelope is pinned by `TestRouteRefusalRendersInvalidArguments` and
+`TestCallSelectorRefusalIsInvalidArguments`.
+
 ## NOT_CHECKED
 
 Live MCP calls against deployed artifacts, QA EKS proof, concurrent
