@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FAILURES = []
 
-SOURCE_COMMIT = "93f481e3d261cb5b126d765834b4d688b67693b3"
+SOURCE_COMMIT = "66e9ae4223fccb108318525ad32897edc4844de6"
 OWNERSHIP_SHA256 = "ed6909ca4169804a120a14674842c11c111176a32d4ae92a832d9b88a874cf72"
 COST_SET = {"low", "moderate", "high"}
 
@@ -97,7 +97,7 @@ def main():
     )
     check(
         doc["source"]["commit"] == SOURCE_COMMIT,
-        "source commit is origin/main 93f481e3d2 (fix-07 part B merge)",
+        "source commit is the #77 reseed vehicle 66e9ae4223 (93f481e3d2 plus the two fallback-alias schemas)",
     )
     check(
         doc["source"]["ownership_map"] == "go/cmd/api/CUTOVER_OWNERSHIP.md",
@@ -129,7 +129,7 @@ def main():
     )
     check(
         digest == OWNERSHIP_SHA256,
-        "verbatim ownership map matches reseed-time hash (93f481e3d2)",
+        "verbatim ownership map matches reseed-time hash (66e9ae4223; map unchanged from 93f481e3d2)",
     )
 
     defs_path = ROOT / "contracts" / "tool-registry" / "v1" / "tool_definitions.json"

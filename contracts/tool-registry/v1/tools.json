@@ -2,7 +2,7 @@
   "contract_version": "v1",
   "source": {
     "repo": "github.com/eshu-hq/eshu",
-    "commit": "93f481e3d261cb5b126d765834b4d688b67693b3",
+    "commit": "66e9ae4223fccb108318525ad32897edc4844de6",
     "census_test": "go/internal/mcp/tool_registry_census_test.go",
     "census_count_constant": 173,
     "ownership_map": "go/cmd/api/CUTOVER_OWNERSHIP.md",

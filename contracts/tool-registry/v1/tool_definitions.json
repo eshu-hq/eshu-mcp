@@ -3742,6 +3742,10 @@
             "description": "Repository ID to anchor run correlation lookup.",
             "type": "string"
           },
+          "run_id": {
+            "description": "Older run identifier spelling; the listing route falls back to it when provider_run_id is absent, empty, or wrong-typed.",
+            "type": "string"
+          },
           "scope_id": {
             "description": "Optional ingestion scope ID for a CI/CD run generation.",
             "type": "string"
@@ -5397,6 +5401,10 @@
       "description": "Get a bounded incident context packet from collected incident evidence, including explicit missing slots plus intended/applied/live PagerDuty routing and deployable, runtime, image, build, commit, PR, and work-item slots only when provider or reducer evidence proves them.",
       "inputSchema": {
         "properties": {
+          "incident_id": {
+            "description": "Older incident identifier spelling; the route falls back to it when provider_incident_id is absent, empty, or wrong-typed.",
+            "type": "string"
+          },
           "limit": {
             "default": 25,
             "description": "Maximum timeline and change-candidate rows to return.",
@@ -9611,7 +9619,7 @@
       ]
     },
     "census_test": "go/internal/mcp/tool_registry_census_test.go",
-    "commit": "93f481e3d261cb5b126d765834b4d688b67693b3",
+    "commit": "66e9ae4223fccb108318525ad32897edc4844de6",
     "note": "Served definitions are verbatim source facts; tools/list serves registry_tools in order.",
     "repo": "github.com/eshu-hq/eshu",
     "schema_census_test": "go/internal/mcp/tool_registry_schema_census_test.go"

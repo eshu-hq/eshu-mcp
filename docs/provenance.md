@@ -5,10 +5,11 @@ Refs `eshu-hq/eshu#8873`, part of `eshu-hq/eshu#6707`.
 ## Source
 
 - Repository: `github.com/eshu-hq/eshu`.
-- Commit: `93f481e3d261cb5b126d765834b4d688b67693b3`
-  (fix-07 part-B merge, `eshu-hq/eshu#10616`, reseed time 2026-11-13).
-  The prior seed used `9922b492d8a3a25ef87b39d38864b36ff522a6ce`
-  (173 tools).
+- Commit: `66e9ae4223fccb108318525ad32897edc4844de6`
+  (eshu-hq/eshu-mcp#77 reseed vehicle: `93f481e3d2` plus only the two
+  fallback-alias schema properties; the reviewable change is on
+  `drive/77-incident-run-fallbacks`, `f158b476ac`). The prior seed used
+  `93f481e3d261cb5b126d765834b4d688b67693b3` (173 tools, fix-07 part C).
 - Ownership map: `go/cmd/api/CUTOVER_OWNERSHIP.md` (the in-tree server
   moved from `go/cmd/mcp-server` after `eshu-hq/eshu#9679`; the satellite
   keeps a verbatim copy).

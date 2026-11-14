@@ -1,5 +1,5 @@
 {
-  "_comment": "Fix-07 catalog-seeding goldens: catalog_free_top5 pins catalog-free ranking over the full 173-tool registry; seeded_top5 pins the part-C seeded ranking (router_catalog from the 93f481e3d2 seed facts). A change here means the ranker or the seeded catalog moved.",
+  "_comment": "Fix-07 catalog-seeding goldens: catalog_free_top5 pins catalog-free ranking over the full 173-tool registry; seeded_top5 pins the part-C seeded ranking (router_catalog from the 93f481e3d2 seed facts, byte-identical through the #77 declare reseed). A change here means the ranker or the seeded catalog moved.",
   "contract_version": "v1",
   "queries": [
     {
