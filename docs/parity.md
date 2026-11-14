@@ -51,6 +51,29 @@ Run `python3 scripts/check-parity.py` to re-verify the in-repo invariants.
 Cross-repo byte-parity re-verification needs the source checkout; the
 commands are recorded above.
 
+## Declare reseed (eshu-hq/eshu-mcp#77)
+
+Per the arbiter ruling on #73, closed-world validation stays held until
+every known working key is declared-or-removed in core schema source. This
+reseed declares the incident/run fallback pair and keeps both route reads:
+
+- `get_incident_context` gains optional `incident_id` (older spelling; the
+  route falls back to it when `provider_incident_id` is absent, empty, or
+  wrong-typed). Required stays `["provider_incident_id"]`.
+- `list_ci_cd_run_correlations` gains optional `run_id` (older spelling;
+  the listing route falls back to it and echoes it under its own key).
+  No required keys.
+
+Re-rendered at the merged eshu content `dd63fcfe4d` (PR eshu-hq/eshu#10703).
+Census stays 173 with byte-identical tool order and tail; the sweep now
+carries current core behavior (evidence_detail handles defaults,
+external_only) alongside the new alias rows; the ownership map is
+byte-identical (`ed6909ca…`, `cmp` clean); envelope, dispatch, and router
+pins unchanged.
+Proof: `python3 scripts/check-parity.py`, `go test ./...`, and the new
+`TestIncidentAndRunFallbackKeysDeclared` plus the route-keeps-reads pins
+in `internal/dispatch` and `internal/dispatch/cicd`.
+
 ## Edge credential admission (eshu-hq/eshu-mcp#48, #50)
 
 The edge door check classifies credentials by shape and does not admit them.

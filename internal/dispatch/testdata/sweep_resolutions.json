@@ -1390,7 +1390,10 @@
       "body": null,
       "label": "default",
       "method": "GET",
-      "path": "/api/v0/repositories/$REPO/context"
+      "path": "/api/v0/repositories/$REPO/context",
+      "query": {
+        "evidence_detail": "handles"
+      }
     }
   ],
   "get_repo_story": [
@@ -1401,7 +1404,10 @@
       "body": null,
       "label": "default",
       "method": "GET",
-      "path": "/api/v0/repositories/$REPO/story"
+      "path": "/api/v0/repositories/$REPO/story",
+      "query": {
+        "evidence_detail": "handles"
+      }
     }
   ],
   "get_repo_summary": [
@@ -1892,6 +1898,7 @@
         "source_module": "sweep"
       },
       "body": {
+        "external_only": false,
         "language": "",
         "limit": 5,
         "max_cycle_length": 0,
@@ -2258,7 +2265,8 @@
       "path": "/api/v0/repositories",
       "query": {
         "limit": "50",
-        "offset": "0"
+        "offset": "0",
+        "projection": "compact"
       }
     }
   ],
