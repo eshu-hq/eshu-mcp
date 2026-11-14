@@ -558,9 +558,14 @@
       "name": "inspect_code_inventory"
     },
     {
-      "description": "Investigate bounded import and module dependency questions such as imports by file, importers, package imports, bounded simple Python file-import cycles, Go package-import cycles, TS/JS package-import cycles, and cross-module calls. Cycles enumerate rotation-deduplicated simple cycles up to max_cycle_length (default 5) after excluding type-only and deferred IMPORTS edges, labelling each cycle runtime, ambiguous (an inferred edge), or flags_unknown (an edge written before the import flags existed); enumeration stops at 1,000 cycles or a fixed step budget and reports truncated:true with the stop reason; page on has_more and next_offset, since truncated stays true on every page of a stopped run. Go cycles run at package level over the projector's file-to-package mapping: pass language=go, and read the file and module slots as package import paths. TS/JS cycles run at package level over the projector's file-to-package mapping: pass language=typescript, tsx, or javascript, and read the file and module slots as npm package names. Provide at least one scope filter: repo_id, source_file, target_file, source_module, or target_module. target_file applies only to cycle and cross-module queries. Candidate scans above 25,000 rows fail with an instruction to narrow scope. Scoped tokens receive only granted repositories; an ungranted repository selector is rejected.",
+      "description": "Investigate bounded import and module dependency questions such as imports by file, importers, package imports, bounded simple Python file-import cycles, Go package-import cycles, TS/JS package-import cycles, and cross-module calls. Cycles enumerate rotation-deduplicated simple cycles up to max_cycle_length (default 5) after excluding type-only and deferred IMPORTS edges, labelling each cycle runtime, ambiguous (an inferred edge), or flags_unknown (an edge written before the import flags existed); enumeration stops at 1,000 cycles or a fixed step budget and reports truncated:true with the stop reason; page on has_more and next_offset, since truncated stays true on every page of a stopped run. Go cycles run at package level over the projector's file-to-package mapping: pass language=go, and read the file and module slots as package import paths. TS/JS cycles run at package level over the projector's file-to-package mapping: pass language=typescript, tsx, or javascript, and read the file and module slots as npm package names. Provide at least one scope filter: repo_id, source_file, target_file, source_module, target_module, or target_module_prefix. target_file applies only to cycle and cross-module queries. target_module_prefix matches Module names by prefix (STARTS WITH on the module-name index, e.g. @scope/ or github.com/acme/); it is mutually exclusive with target_module and an explicitly empty prefix is rejected. external_only drops relative (./x, ../y) and absolute (/abs) specifiers, keeping bare package names; it applies only to the module-matching reads. Candidate scans above 25,000 rows fail with an instruction to narrow scope. Scoped tokens receive only granted repositories; an ungranted repository selector is rejected.",
       "inputSchema": {
         "properties": {
+          "external_only": {
+            "default": false,
+            "description": "Exclude relative (./x, ../y) and absolute (/abs) specifiers, keeping bare package names; applies only to the module-matching reads",
+            "type": "boolean"
+          },
           "language": {
             "description": "Optional language filter. file_import_cycles supports python multi-node cycle detection, go package cycle detection, typescript/tsx/javascript package cycle detection, and java package cycle detection; other languages are rejected.",
             "type": "string"
@@ -617,6 +622,10 @@
           },
           "target_module": {
             "description": "Optional imported or target module name anchor",
+            "type": "string"
+          },
+          "target_module_prefix": {
+            "description": "Optional module-name prefix anchor (STARTS WITH, e.g. @scope/ or github.com/acme/); mutually exclusive with target_module, rejected when empty, counts as a scope filter",
             "type": "string"
           }
         },
@@ -1897,7 +1906,7 @@
       "name": "search_registry_bundles"
     },
     {
-      "description": "List a bounded page of indexed repositories. For an exact indexed-repository count, use the authoritative total field, which is independent of page size; count is only the number of rows in the current page. Cite list_indexed_repositories.total as the evidence source.",
+      "description": "List a bounded page of indexed repositories. For an exact indexed-repository count, use the authoritative total field, which is independent of page size; count is only the number of rows in the current page. Omit the name filter for the full inventory count: with name present total counts the filtered set. This tool is discovery (finding candidates from a partial name), not resolution: first hit is not identity, drill down with get_repository_stats. Full rows are for small limits; request compact (the default) for large pages such as limit=500. Cite list_indexed_repositories.total as the evidence source.",
       "inputSchema": {
         "properties": {
           "limit": {
@@ -1907,12 +1916,24 @@
             "minimum": 1,
             "type": "integer"
           },
+          "name": {
+            "description": "Optional case-insensitive substring filter matched against the repository name or repo slug before count and page. Empty or whitespace-only means absent. At most 200 characters; longer input answers an error.",
+            "type": "string"
+          },
           "offset": {
             "default": 0,
             "description": "Zero-based result offset for paging",
             "maximum": 10000,
             "minimum": 0,
             "type": "integer"
+          },
+          "projection": {
+            "description": "Row shape. Compact returns identity rows only (id, name, repo_slug, index_state) and fits large pages; it is the default for this tool. Full returns every row in full and can exceed the response budget on a large page.",
+            "enum": [
+              "full",
+              "compact"
+            ],
+            "type": "string"
           }
         },
         "required": [],
@@ -2684,6 +2705,14 @@
       "description": "Get complete context for a repository in a single call. Accepts a repository selector such as canonical ID, name, repo slug, or indexed path.",
       "inputSchema": {
         "properties": {
+          "evidence_detail": {
+            "description": "How context row lists are shaped. handles (the default for this tool) projects relationships, relationship_overview.relationships, consumers, api_surface.endpoints, deployment_evidence.artifacts, deployment_artifacts, infrastructure_overview.deployment_artifacts, entry_points, and infrastructure to identity rows, drops the repeated relationship partition lists and the evidence_index regrouping with a pointer, keeps every count, and names each reduced family with its total in truth.omissions; repeat the call with full for every field of every row. full returns every row in full and can exceed the response budget on a populated repository.",
+            "enum": [
+              "full",
+              "handles"
+            ],
+            "type": "string"
+          },
           "repo_id": {
             "description": "Repository selector: canonical ID, name, repo slug, or indexed path",
             "type": "string"
@@ -3015,6 +3044,14 @@
       "description": "Get a structured story for a repository. Accepts a repository selector such as canonical ID, name, repo slug, or indexed path.",
       "inputSchema": {
         "properties": {
+          "evidence_detail": {
+            "description": "How story row lists are shaped. handles (the default for this tool) projects relationship_overview.relationships, deployment_evidence.artifacts, deployment_artifacts, delivery_paths, delivery_workflows, target_documentation.findings, documentation_overview.target_documentation.related_facts, target_support.evidence, support_overview.target_support.ambiguous_evidence, and framework_summary.frameworks to identity rows, drops the repeated relationship partition lists and the evidence_index regrouping with a pointer, keeps every count, narrative, limitation, and drilldown, and names each reduced family with its total in truth.omissions; repeat the call with full for every field of every row. full returns every row in full and can exceed the response budget on a populated repository.",
+            "enum": [
+              "full",
+              "handles"
+            ],
+            "type": "string"
+          },
           "repo_id": {
             "description": "Repository selector: canonical ID, name, repo slug, or indexed path",
             "type": "string"
@@ -3740,6 +3777,10 @@
           },
           "repository_id": {
             "description": "Repository ID to anchor run correlation lookup.",
+            "type": "string"
+          },
+          "run_id": {
+            "description": "Older run identifier spelling; the listing route falls back to it when provider_run_id is absent, empty, or wrong-typed.",
             "type": "string"
           },
           "scope_id": {
@@ -5397,6 +5438,10 @@
       "description": "Get a bounded incident context packet from collected incident evidence, including explicit missing slots plus intended/applied/live PagerDuty routing and deployable, runtime, image, build, commit, PR, and work-item slots only when provider or reducer evidence proves them.",
       "inputSchema": {
         "properties": {
+          "incident_id": {
+            "description": "Older incident identifier spelling; the route falls back to it when provider_incident_id is absent, empty, or wrong-typed.",
+            "type": "string"
+          },
           "limit": {
             "default": 25,
             "description": "Maximum timeline and change-candidate rows to return.",
@@ -6153,7 +6198,7 @@
       "name": "build_evidence_citation_packet"
     },
     {
-      "description": "Search indexed file content across repositories (substring match, ordered by repository then path). A call with no repo_ids runs inside a work budget (2000 ms by default): when the budget ends before the page is proven complete, the reply is still a success with truncated=true, truth.level=partial, and a partial object (reason, rows_scanned_in_order, rows_matched, cursor, budget_ms, elapsed_ms, overrun_ms, progressed, hint). The rows returned are an ordered prefix of the exact answer. To continue, pass partial.cursor as cursor and offset = max(0, offset - rows_matched), but only while partial.progressed is true: progressed=false means the call scanned nothing inside the budget and resuming repeats the same request, so scope with repo_ids, raise budget_ms for this request (100..10000), or stop, and bound any resume loop. Omitted budget_ms uses the configured server budget; budget_ms on scoped searches is refused. To get an exact answer, add repo_ids to scope the search. A file is indexed only if it matched a parser-registry name, prefix, extension, or documentation format, or is a .gitmodules or CODEOWNERS file. Dotfiles are not hidden: .eslintrc.js and .github/workflows/ci.yml are indexed; extensionless names with no registry entry, such as .env, are not. A file not found may simply not be indexed, or may be gitignored, in .eshuignore, in a default-pruned directory (for example node_modules, vendor, dist, or build; the full set is under Default skips in the .eshuignore reference, eshuignore.md#default-skips), have an ignored extension, be generated, or be a symlink whose target fails admission (it leaves the repository, sits in a skipped path, dangles or loops, or is a different file kind).",
+      "description": "Search indexed file content across repositories (substring match, ordered by repository then path). A call with no repo_ids runs inside a work budget (2000 ms by default): when the budget ends before the page is proven complete, the reply is still a success with truncated=true, truth.level=partial, and a partial object (reason, rows_scanned_in_order, rows_matched, cursor, budget_ms, elapsed_ms, overrun_ms, progressed, hint). The rows returned are an ordered prefix of the exact answer. To continue, pass partial.cursor as cursor and offset = max(0, offset - rows_matched), but only while partial.progressed is true: progressed=false means the call scanned nothing inside the budget and resuming repeats the same request, so scope with repo_ids, raise budget_ms for this request (100..10000), or stop, and bound any resume loop. Omitted budget_ms uses the configured server budget; budget_ms on scoped searches is refused. To get an exact answer, add repo_ids to scope the search; find candidate repositories first with `list_indexed_repositories` (`name` filter). Search rows carry match_snippet (a bounded excerpt around the first match; it may start or end mid-token) and match_line (the 1-based line: exact or absent, never approximate); either field is absent when its derivation does not apply. Use get_file_lines for wider context. documents_not_searched names how many documents no completed statement read on an unscoped reply (0 on an exact page; -1 when the count itself was cancelled and the number is unknown, never zero); documents_not_searched_state labels it in-band as exact, partial, or unknown. Scoped searches and search_entity_content carry neither field. A file is indexed only if it matched a parser-registry name, prefix, extension, or documentation format, or is a .gitmodules or CODEOWNERS file. Dotfiles are not hidden: .eslintrc.js and .github/workflows/ci.yml are indexed; extensionless names with no registry entry, such as .env, are not. A file not found may simply not be indexed, or may be gitignored, in .eshuignore, in a default-pruned directory (for example node_modules, vendor, dist, or build; the full set is under Default skips in the .eshuignore reference, eshuignore.md#default-skips), have an ignored extension, be generated, or be a symlink whose target fails admission (it leaves the repository, sits in a skipped path, dangles or loops, or is a different file kind).",
       "inputSchema": {
         "properties": {
           "budget_ms": {
@@ -6189,7 +6234,7 @@
             "type": "integer"
           },
           "pattern": {
-            "description": "Search pattern or regular expression",
+            "description": "Case-insensitive substring to find in file content. Matched literally: `%`, `_`, and `\\` are ordinary characters, not wildcards or regular expression syntax.",
             "type": "string"
           },
           "repo_ids": {
@@ -6208,7 +6253,7 @@
       "name": "search_file_content"
     },
     {
-      "description": "Search cached entity source snippets across repositories (default 10 rows). Each row's source_cache is clipped to 4,096 bytes and a clipped row carries source_cache_clipped; the response reports source_cache_clip_bytes and source_cache_clipped_rows. A docstring is clipped to 512 bytes the same way (docstring_clipped, docstring_total_bytes, docstring_clip_bytes, docstring_clipped_rows). Use get_entity_content with the row's entity_id for the full body and docstring. A call with no repo_ids runs inside a work budget (2000 ms by default): when the budget ends before the page is proven complete, the reply is still a success with truncated=true, truth.level=partial, and a partial object (reason, rows_scanned_in_order, rows_matched, cursor, budget_ms, elapsed_ms, overrun_ms, progressed, hint). The rows returned are an ordered prefix of the exact answer. To continue, pass partial.cursor as cursor and offset = max(0, offset - rows_matched), but only while partial.progressed is true: progressed=false means the call scanned nothing inside the budget and resuming repeats the same request, so scope with repo_ids, ask the operator to raise the server budget, or stop, and bound any resume loop. To get an exact answer, add repo_ids to scope the search. A reply is capped at 262,144 bytes (256 KiB). Rows carry up to several KiB each, so a limit near 200 can exceed the cap: the reply is then a page of whole rows with truncated=true, budget_page, and next_offset; pass next_offset as offset to read the remainder. A reply can carry both partial and next_offset when the cap trimmed a partial page. Then page with next_offset first, keeping the same cursor; follow partial.cursor only from a reply without budget_page, because partial.rows_matched also counts the rows the cap trimmed and resuming from partial.cursor would skip them. A budget_page without next_offset has reached the 10,000 offset cap: repeat the call with a limit no larger than budget_page.rows_returned.",
+      "description": "Search cached entity source snippets across repositories (default 10 rows). Each row's source_cache is clipped to 4,096 bytes and a clipped row carries source_cache_clipped; the response reports source_cache_clip_bytes and source_cache_clipped_rows. A docstring is clipped to 512 bytes the same way (docstring_clipped, docstring_total_bytes, docstring_clip_bytes, docstring_clipped_rows). Use get_entity_content with the row's entity_id for the full body and docstring. A call with no repo_ids runs inside a work budget (2000 ms by default): when the budget ends before the page is proven complete, the reply is still a success with truncated=true, truth.level=partial, and a partial object (reason, rows_scanned_in_order, rows_matched, cursor, budget_ms, elapsed_ms, overrun_ms, progressed, hint). The rows returned are an ordered prefix of the exact answer. To continue, pass partial.cursor as cursor and offset = max(0, offset - rows_matched), but only while partial.progressed is true: progressed=false means the call scanned nothing inside the budget and resuming repeats the same request, so scope with repo_ids, ask the operator to raise the server budget, or stop, and bound any resume loop. To get an exact answer, add repo_ids to scope the search; find candidate repositories first with `list_indexed_repositories` (`name` filter). A reply is capped at 262,144 bytes (256 KiB). Rows carry up to several KiB each, so a limit near 200 can exceed the cap: the reply is then a page of whole rows with truncated=true, budget_page, and next_offset; pass next_offset as offset to read the remainder. A reply can carry both partial and next_offset when the cap trimmed a partial page. Then page with next_offset first, keeping the same cursor; follow partial.cursor only from a reply without budget_page, because partial.rows_matched also counts the rows the cap trimmed and resuming from partial.cursor would skip them. A budget_page without next_offset has reached the 10,000 offset cap: repeat the call with a limit no larger than budget_page.rows_returned.",
       "inputSchema": {
         "properties": {
           "cursor": {
@@ -6244,7 +6289,7 @@
             "type": "integer"
           },
           "pattern": {
-            "description": "Search pattern or regular expression",
+            "description": "Case-insensitive substring to find in entity source snippets. Matched literally: `%`, `_`, and `\\` are ordinary characters, not wildcards or regular expression syntax.",
             "type": "string"
           },
           "rank_cursor": {
@@ -6841,7 +6886,7 @@
       "name": "list_semantic_code_hints"
     },
     {
-      "description": "Search curated Eshu context for a repository with explicit scope, limit, timeout, truth, and truncation metadata.",
+      "description": "Search curated Eshu context for a repository with explicit scope, limit, timeout, truth, and truncation metadata. The response reports corpus_state in words: results: [] with corpus_state populated means the corpus was searched and nothing matched (a real answer); with corpus_state empty means there is nothing to search, so retrying with different words is pointless.",
       "inputSchema": {
         "properties": {
           "environment": {
@@ -9611,7 +9656,7 @@
       ]
     },
     "census_test": "go/internal/mcp/tool_registry_census_test.go",
-    "commit": "93f481e3d261cb5b126d765834b4d688b67693b3",
+    "commit": "dd63fcfe4db8e83f814c895aad3b1bc5f4154081",
     "note": "Served definitions are verbatim source facts; tools/list serves registry_tools in order.",
     "repo": "github.com/eshu-hq/eshu",
     "schema_census_test": "go/internal/mcp/tool_registry_schema_census_test.go"

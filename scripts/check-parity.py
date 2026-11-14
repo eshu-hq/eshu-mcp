@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 FAILURES = []
 
-SOURCE_COMMIT = "93f481e3d261cb5b126d765834b4d688b67693b3"
+SOURCE_COMMIT = "dd63fcfe4db8e83f814c895aad3b1bc5f4154081"
 OWNERSHIP_SHA256 = "ed6909ca4169804a120a14674842c11c111176a32d4ae92a832d9b88a874cf72"
 COST_SET = {"low", "moderate", "high"}
 
@@ -97,7 +97,7 @@ def main():
     )
     check(
         doc["source"]["commit"] == SOURCE_COMMIT,
-        "source commit is origin/main 93f481e3d2 (fix-07 part B merge)",
+        "source commit is the merged #77 eshu content dd63fcfe4d (PR eshu-hq/eshu#10703)",
     )
     check(
         doc["source"]["ownership_map"] == "go/cmd/api/CUTOVER_OWNERSHIP.md",
@@ -129,7 +129,7 @@ def main():
     )
     check(
         digest == OWNERSHIP_SHA256,
-        "verbatim ownership map matches reseed-time hash (93f481e3d2)",
+        "verbatim ownership map matches reseed-time hash (dd63fcfe4d; map unchanged from 93f481e3d2)",
     )
 
     defs_path = ROOT / "contracts" / "tool-registry" / "v1" / "tool_definitions.json"

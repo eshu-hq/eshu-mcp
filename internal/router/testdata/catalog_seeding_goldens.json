@@ -1,5 +1,5 @@
 {
-  "_comment": "Fix-07 catalog-seeding goldens: catalog_free_top5 pins catalog-free ranking over the full 173-tool registry; seeded_top5 pins the part-C seeded ranking (router_catalog from the 93f481e3d2 seed facts). A change here means the ranker or the seeded catalog moved.",
+  "_comment": "Fix-07 catalog-seeding goldens: catalog_free_top5 pins catalog-free ranking over the full 173-tool registry; seeded_top5 pins the part-C seeded ranking (router_catalog from the dd63fcfe4d seed facts (merged #77 eshu content, PR eshu-hq/eshu#10703)). A change here means the ranker or the seeded catalog moved.",
   "contract_version": "v1",
   "queries": [
     {
@@ -117,8 +117,8 @@
         "get_file_content",
         "get_entity_content",
         "resolve_entity",
-        "search_file_content",
-        "list_repository_files"
+        "list_repository_files",
+        "search_file_content"
       ],
       "seeded_top5": [
         "get_file_content",
@@ -151,17 +151,17 @@
       "limit": 5,
       "catalog_free_top5": [
         "search_semantic_context",
+        "search_file_content",
         "get_entity_context",
-        "get_workload_context",
-        "get_service_context",
-        "get_semantic_capability_status"
+        "get_semantic_capability_status",
+        "get_workload_context"
       ],
       "seeded_top5": [
         "search_semantic_context",
+        "search_file_content",
         "get_semantic_capability_status",
-        "get_service_context",
-        "get_workload_context",
-        "list_semantic_documentation_observations"
+        "list_semantic_documentation_observations",
+        "find_infra_resources"
       ]
     },
     {
@@ -206,15 +206,15 @@
       "catalog_free_top5": [
         "get_file_lines",
         "list_repository_files",
+        "search_file_content",
         "search_php_configuration",
-        "get_file_content",
-        "get_repository_language_inventory"
+        "get_file_content"
       ],
       "seeded_top5": [
         "get_file_lines",
+        "search_file_content",
         "list_repository_files",
         "get_file_content",
-        "search_php_configuration",
         "get_repository_language_inventory"
       ]
     },
