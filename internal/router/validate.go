@@ -90,10 +90,19 @@ func boundEcho(text string) string {
 // It implements the keywords registered tools use (see
 // UnsupportedSchemaFeatures) and mirrors the dispatch path's tolerance where
 // strict JSON schema would reject a call dispatch accepts today: a JSON null
-// for an optional property counts as absent, properties the schema does not
-// declare are ignored, and a blank date-time is accepted because the handlers
-// trim it to "not set". default and description are annotations and are never
-// applied, so a validated call reaches dispatch byte-for-byte unchanged.
+// for an optional property counts as absent, and a blank date-time is
+// accepted because the handlers trim it to "not set". default and
+// description are annotations and are never applied, so a validated call
+// reaches dispatch byte-for-byte unchanged.
+//
+// Objects are closed: a key the schema's properties do not declare is an
+// additionalProperties violation, so a call_tool typo fails here naming the
+// key instead of dispatching into a route refusal (eshu-hq/eshu-mcp#73). An
+// additionalProperties schema still governs the keys it covers, an explicit
+// additionalProperties: true keeps the object open, and an object schema
+// with neither properties nor additionalProperties stays free-form. The
+// direct tools/call path never validates, so it keeps the dispatch
+// tolerance; the router pair and every nested object share this rule.
 func ValidateArguments(schema any, args map[string]any) []FieldError {
 	errs, _ := ValidateArgumentsDetail(schema, args)
 	return errs
@@ -216,7 +225,24 @@ func validateObject(schema map[string]any, object map[string]any, path string, e
 		}
 		if extraSchema, ok := extra.(map[string]any); ok {
 			validateValue(extraSchema, value, joinPath(path, key), errs)
+			continue
 		}
+		// A key the schema does not declare is rejected, closing the
+		// object: a call_tool typo fails here naming the key instead of
+		// dispatching past validation into a route refusal
+		// (eshu-hq/eshu-mcp#73). An explicit additionalProperties: true
+		// opts the object back into the old open world, and an object
+		// schema with neither properties nor additionalProperties stays
+		// free-form because there is no declared set to close over. Any
+		// other additionalProperties value, including an absent one or
+		// an explicit false, fails closed.
+		if open, ok := extra.(bool); ok && open {
+			continue
+		}
+		if properties == nil && extra == nil {
+			continue
+		}
+		errs.add(FieldError{Path: joinPath(path, key), Keyword: "additionalProperties", Message: "is not a declared property"})
 	}
 }
 

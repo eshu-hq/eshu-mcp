@@ -233,6 +233,36 @@ byte-identical, so `TestResolveRouteRefusesMissingSelector` still holds;
 the envelope is pinned by `TestRouteRefusalRendersInvalidArguments` and
 `TestCallSelectorRefusalIsInvalidArguments`.
 
+### Closed-world validation and typed single-selector refusals (eshu-hq/eshu-mcp#73, slice 2)
+
+Deliberate divergence from the source validator, which ignores properties
+the schema does not declare. The router validator now rejects an undeclared
+key with an `additionalProperties` field error naming it, so a `call_tool`
+typo such as `service` for `service_name` fails validation instead of
+dispatching into a route refusal; see `TestCallTypoIsInvalidArguments`. An
+`additionalProperties` schema still governs its keys, an explicit
+`additionalProperties: true` keeps the object open, a JSON null still reads
+as absent, and an object schema with neither properties nor
+additionalProperties stays free-form. The direct `tools/call` path never
+validates and keeps the source tolerance. The `find_tool` unknown-anchor
+hint in `boundFindRequest` is shadowed (closed-world validation reports the
+undeclared anchor first, same envelope code) and stays as a guard.
+
+The remaining single-selector route refusals — the explicit checks in
+`routes_status.go` and `routes_repository_files.go`, and the named-missing
+arm of the shared empty-path-segment guard — carry
+`routecontract.MissingSelectorError` with byte-identical texts, so both
+`tools/call` paths render the structured envelope; pinned by the extended
+`selectorRefusalCases` table and `TestDirectSelectorRefusalIsInvalidArguments`.
+The per-tool route-read audit behind the closed world (every tool's route
+reads are schema-declared except `resolve_entity`'s deprecated `name`
+alias, the `incident_id` / `run_id` fallbacks, the `dead_code`
+`exclude_decorated_with` filter, the `search_*` `query` / `repo_id` /
+`rank_cursor` selectors, and the three whole-map pass-through routes
+`explain_dependency_path`, `get_file_lines`, and
+`list_runtime_version_declarations`) is recorded on the issue; those calls
+now fail closed on `call_tool` while the direct path still honors them.
+
 ## NOT_CHECKED
 
 Live MCP calls against deployed artifacts, QA EKS proof, concurrent

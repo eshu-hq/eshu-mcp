@@ -1,7 +1,6 @@
 package dispatch
 
 import (
-	"fmt"
 	"net/url"
 
 	"github.com/eshu-hq/eshu-mcp/internal/routecontract"
@@ -20,7 +19,11 @@ func repositoryFilesRoute(toolName string, args map[string]any) (*routecontract.
 
 	repoID := str(args, "repo_id")
 	if repoID == "" {
-		return nil, true, fmt.Errorf("repo_id is required")
+		return nil, true, &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  []string{"repo_id"},
+			Message: "repo_id is required",
+		}
 	}
 
 	q := map[string]string{}

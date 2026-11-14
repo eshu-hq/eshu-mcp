@@ -114,6 +114,13 @@ func adaptChildRoute(request routecontract.Request, handled bool) (*routecontrac
 // running the handler. The error names the tool's required arguments that
 // are empty, in the same "<field> is required" form as the other
 // route-level missing-argument errors.
+//
+// The named-missing form carries routecontract.MissingSelectorError (tool
+// plus the empty required fields) so both the direct tools/call path and
+// the routed call_tool path render the structured
+// mcp_router_invalid_arguments error (eshu-hq/eshu-mcp#73); the text stays
+// byte-identical. The empty-list fallback keeps its plain error: with no
+// missing schema-required argument there is no field list to name.
 func rejectEmptyPathSegment(toolName string, args map[string]any, route *routecontract.Request) error {
 	if route == nil || !strings.Contains(route.Path, "//") {
 		return nil
@@ -122,7 +129,11 @@ func rejectEmptyPathSegment(toolName string, args map[string]any, route *routeco
 	if len(missing) == 0 {
 		return fmt.Errorf("%s: a required path argument is empty", toolName)
 	}
-	return fmt.Errorf("%s is required", strings.Join(missing, ", "))
+	return &routecontract.MissingSelectorError{
+		Tool:    toolName,
+		Fields:  missing,
+		Message: fmt.Sprintf("%s is required", strings.Join(missing, ", ")),
+	}
 }
 
 // emptyRequiredArguments returns the schema-required string arguments of a

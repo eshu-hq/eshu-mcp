@@ -216,6 +216,9 @@ func serverRunDispatch(ctx context.Context, name string, args map[string]any) (a
 // still answers mcp_router_invalid_arguments, now with the selector fields
 // that would satisfy the route. Validation still dispatches (see
 // TestCallSelectorAlternativesDispatch); the refusal renders downstream.
+// A misspelled selector such as service for service_name no longer reaches
+// this table: closed-world validation rejects it naming the key (see
+// TestCallTypoIsInvalidArguments).
 func TestCallSelectorRefusalIsInvalidArguments(t *testing.T) {
 	t.Parallel()
 
@@ -226,7 +229,6 @@ func TestCallSelectorRefusalIsInvalidArguments(t *testing.T) {
 		args   map[string]any
 		fields []string
 	}{
-		{"get_service_story", map[string]any{"service": "example-service"}, storyFields},
 		{"get_service_story", map[string]any{}, storyFields},
 		{"get_service_story", map[string]any{"service_id": "   "}, storyFields},
 		{"get_service_story", map[string]any{"service_id": nil}, storyFields},
@@ -267,6 +269,37 @@ func TestCallSelectorRefusalIsInvalidArguments(t *testing.T) {
 			if !strings.Contains(text, field) {
 				t.Errorf("Call(%s, %v) names no %q field: %s", tc.tool, tc.args, field, text)
 			}
+		}
+	}
+}
+
+// TestCallTypoIsInvalidArguments proves the #73 closed-world fix: an
+// undeclared argument fails call_tool validation naming the key, before any
+// dispatch. The issue's exact repro — service for service_name — answers
+// mcp_router_invalid_arguments instead of dispatching into the plain-text
+// route refusal. The resolve_entity case pins an accepted consequence of
+// the audit: name is a deprecated route alias the schema does not declare,
+// so passing it beside the declared query fails naming name (the direct
+// tools/call path, which never validates, still honors the alias).
+func TestCallTypoIsInvalidArguments(t *testing.T) {
+	t.Parallel()
+
+	engine := testEngine()
+	cases := []struct {
+		tool string
+		args map[string]any
+		key  string
+	}{
+		{"get_service_story", map[string]any{"service": "example-service"}, "service"},
+		{"resolve_entity", map[string]any{"query": "q", "name": "n"}, "name"},
+	}
+	for _, tc := range cases {
+		text := invalidArgumentsBody(t, callMissingArgs(t, engine, tc.tool, tc.args))
+		if !strings.Contains(text, tc.key) {
+			t.Errorf("Call(%s, %v) field errors lack %q: %s", tc.tool, tc.args, tc.key, text)
+		}
+		if !strings.Contains(text, "additionalProperties") {
+			t.Errorf("Call(%s, %v) field errors lack the additionalProperties keyword: %s", tc.tool, tc.args, text)
 		}
 	}
 }

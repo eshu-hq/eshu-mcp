@@ -70,7 +70,6 @@ func TestValidateArgumentsAcceptsValidShapes(t *testing.T) {
 		"typed object slice":   {"repo_id": "r1", "handles": []map[string]any{{"kind": "entity"}}},
 		"additional props":     {"repo_id": "r1", "inputs": map[string]any{"service_name": "api"}},
 		"string map":           {"repo_id": "r1", "inputs": map[string]string{"service_name": "api"}},
-		"unknown property":     {"repo_id": "r1", "not_in_schema": 12},
 		"null optional":        {"repo_id": "r1", "limit": nil, "view": nil},
 		"boolean":              {"repo_id": "r1", "recursive": true},
 		"empty handles":        {"repo_id": "r1", "handles": []any{}},
@@ -119,6 +118,7 @@ func TestValidateArgumentsRejectsInvalidShapes(t *testing.T) {
 		{"nested type", map[string]any{"repo_id": "r", "handles": []any{map[string]any{"kind": "file", "start_line": "1"}}}, "handles[0].start_line", "type"},
 		{"additional property type", map[string]any{"repo_id": "r", "inputs": map[string]any{"n": 3}}, "inputs.n", "type"},
 		{"object wrong type", map[string]any{"repo_id": "r", "inputs": []any{}}, "inputs", "type"},
+		{"unknown property", map[string]any{"repo_id": "r1", "not_in_schema": 12}, "not_in_schema", "additionalProperties"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -254,5 +254,95 @@ func TestDescribeBranches(t *testing.T) {
 	}
 	if got := describe(struct{}{}); got == "" {
 		t.Fatal("fallback describe empty")
+	}
+}
+
+// Undeclared keys (eshu-hq/eshu-mcp#73): a call_tool typo such as service
+// for service_name must fail validation naming the key, not pass silently
+// into a plain-text route refusal. Properties the schema declares keep
+// validating as before; a JSON null still reads as absent, an object
+// schema without properties stays free-form, and an additionalProperties
+// schema still governs the keys it covers.
+func TestValidateArgumentsRejectsUndeclaredKeys(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		schema      any
+		args        map[string]any
+		wantPath    string
+		wantKeyword string
+	}{
+		{
+			"top level typo",
+			validateFixtureSchema(),
+			map[string]any{"repo_id": "r1", "service": "x"},
+			"service", "additionalProperties",
+		},
+		{
+			"nested object typo",
+			validateFixtureSchema(),
+			map[string]any{"repo_id": "r1", "handles": []any{map[string]any{"kind": "file", "start_line": 1, "stop_line": 2}}},
+			"handles[0].stop_line", "additionalProperties",
+		},
+		{
+			"explicit closed schema",
+			map[string]any{
+				"type":                 "object",
+				"properties":           map[string]any{"repo_id": map[string]any{"type": "string"}},
+				"additionalProperties": false,
+			},
+			map[string]any{"repo_id": "r1", "repo_name": "n"},
+			"repo_name", "additionalProperties",
+		},
+		{
+			"explicit open schema",
+			map[string]any{
+				"type":                 "object",
+				"properties":           map[string]any{"repo_id": map[string]any{"type": "string"}},
+				"additionalProperties": true,
+			},
+			map[string]any{"repo_id": "r1", "anything": 1},
+			"", "",
+		},
+		{
+			"additionalProperties schema still allows its keys",
+			validateFixtureSchema(),
+			map[string]any{"repo_id": "r1", "inputs": map[string]any{"service_name": "api"}},
+			"", "",
+		},
+		{
+			"null undeclared reads as absent",
+			validateFixtureSchema(),
+			map[string]any{"repo_id": "r1", "service": nil},
+			"", "",
+		},
+		{
+			"object without properties stays free-form",
+			map[string]any{"type": "object"},
+			map[string]any{"anything": 1},
+			"", "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			errs := ValidateArguments(tc.schema, tc.args)
+			if tc.wantPath == "" {
+				if len(errs) != 0 {
+					t.Fatalf("ValidateArguments(%v) = %v, want no errors", tc.args, errs)
+				}
+				return
+			}
+			found := false
+			for _, e := range errs {
+				if e.Path == tc.wantPath && e.Keyword == tc.wantKeyword {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("ValidateArguments(%v) = %v, want %s at %s", tc.args, errs, tc.wantKeyword, tc.wantPath)
+			}
+		})
 	}
 }
