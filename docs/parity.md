@@ -64,13 +64,12 @@ reseed declares the incident/run fallback pair and keeps both route reads:
   the listing route falls back to it and echoes it under its own key).
   No required keys.
 
-Source vehicle `66e9ae4223` is `93f481e3d2` plus only the two schema
-properties, so no unrelated main-line drift rides along; the reviewable
-change lives on `drive/77-incident-run-fallbacks` (`f158b476ac`).
-Re-render at the merge commit after the eshu side lands. Census stays 173
-with byte-identical tool order and tail; sweep resolutions are unchanged
-(the source sweep has no alias rows); the ownership map is byte-identical
-(`ed6909ca…`, `cmp` clean); envelope, dispatch, and router pins unchanged.
+Re-rendered at the merged eshu content `dd63fcfe4d` (PR eshu-hq/eshu#10703).
+Census stays 173 with byte-identical tool order and tail; the sweep now
+carries current core behavior (evidence_detail handles defaults,
+external_only) alongside the new alias rows; the ownership map is
+byte-identical (`ed6909ca…`, `cmp` clean); envelope, dispatch, and router
+pins unchanged.
 Proof: `python3 scripts/check-parity.py`, `go test ./...`, and the new
 `TestIncidentAndRunFallbackKeysDeclared` plus the route-keeps-reads pins
 in `internal/dispatch` and `internal/dispatch/cicd`.

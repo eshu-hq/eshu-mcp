@@ -44,8 +44,8 @@ func TestRegistryReseedIncidentRunFallbacks(t *testing.T) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("json.Unmarshal(tools.json) failed: %v", err)
 	}
-	if decoded.Source.Commit != "66e9ae4223fccb108318525ad32897edc4844de6" {
-		t.Errorf("source.commit = %q, want the #77 reseed vehicle 66e9ae4223", decoded.Source.Commit)
+	if decoded.Source.Commit != "dd63fcfe4db8e83f814c895aad3b1bc5f4154081" {
+		t.Errorf("source.commit = %q, want the merged #77 eshu content dd63fcfe4d", decoded.Source.Commit)
 	}
 	if decoded.Source.CensusCountConstant != 173 {
 		t.Errorf("source.census_count_constant = %d, want 173", decoded.Source.CensusCountConstant)
@@ -63,6 +63,6 @@ func TestRegistryReseedIncidentRunFallbacks(t *testing.T) {
 		t.Errorf("tool_order[169:] = %q, want the pre-appendix census tail", tail)
 	}
 	if decoded.Source.OwnershipMapSHA256 != "ed6909ca4169804a120a14674842c11c111176a32d4ae92a832d9b88a874cf72" {
-		t.Errorf("ownership_map_sha256 = %q, want the go/cmd/api map at 66e9ae4223; resync docs/source/CUTOVER_OWNERSHIP.md", decoded.Source.OwnershipMapSHA256)
+		t.Errorf("ownership_map_sha256 = %q, want the go/cmd/api map at dd63fcfe4d; resync docs/source/CUTOVER_OWNERSHIP.md", decoded.Source.OwnershipMapSHA256)
 	}
 }
