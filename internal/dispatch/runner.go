@@ -82,6 +82,12 @@ func classifyOutcome(toolName string, result *Result, err error) string {
 			}
 			return outcomeCanceled
 		}
+		// A body over the raw read cap keeps its error shape (the envelope
+		// is rendered at the transport boundary), so the outcome names it
+		// here and the operator log shows how often the wire cap fires.
+		if errors.Is(err, readcontract.ErrOverBudget) {
+			return outcomeOverBudget
+		}
 		return outcomeError
 	}
 	if result != nil && result.IsError && isOverBudget(result) {

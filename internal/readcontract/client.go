@@ -36,6 +36,30 @@ const (
 // response byte budget.
 var ErrOverBudget = fmt.Errorf("readcontract: response exceeds byte budget")
 
+// OverBudgetError reports a read-contract body larger than the configured
+// response byte budget and carries the cap that fired. The true size is
+// unknown beyond the cap: the reader stops at cap+1, so callers must
+// report at least cap+1, never the body itself.
+type OverBudgetError struct {
+	// Method is the dispatch method, empty for route-only calls.
+	Method string
+	// Path is the route path, or the route name for route-only calls.
+	Path string
+	// Budget is the byte cap that fired.
+	Budget int
+}
+
+func (e *OverBudgetError) Error() string {
+	target := e.Path
+	if e.Method != "" {
+		target = e.Method + " " + e.Path
+	}
+	return fmt.Sprintf("readcontract: read %s: response exceeds %d byte budget", target, e.Budget)
+}
+
+// Unwrap keeps errors.Is(err, ErrOverBudget) true for the typed refusal.
+func (e *OverBudgetError) Unwrap() error { return ErrOverBudget }
+
 // StatusError reports a non-2xx answer from a read-contract route.
 type StatusError struct {
 	// StatusCode is the HTTP status the route answered.
@@ -171,7 +195,7 @@ func (c *Client) DoRaw(ctx context.Context, route RawRequest, authHeader string)
 		return resp.StatusCode, nil, fmt.Errorf("readcontract: read %s %s: %w", route.Method, route.Path, err)
 	}
 	if len(raw) > c.cfg.ResponseByteBudget {
-		return resp.StatusCode, nil, fmt.Errorf("readcontract: read %s %s: %w", route.Method, route.Path, ErrOverBudget)
+		return resp.StatusCode, nil, &OverBudgetError{Method: route.Method, Path: route.Path, Budget: c.cfg.ResponseByteBudget}
 	}
 	return resp.StatusCode, raw, nil
 }
@@ -214,7 +238,7 @@ func (c *Client) Do(ctx context.Context, route string, query url.Values) ([]byte
 		return nil, fmt.Errorf("readcontract: read %s: %w", route, readErr)
 	}
 	if len(raw) > c.cfg.ResponseByteBudget {
-		return nil, fmt.Errorf("readcontract: read %s: %w", route, ErrOverBudget)
+		return nil, &OverBudgetError{Path: route, Budget: c.cfg.ResponseByteBudget}
 	}
 	return raw, nil
 }

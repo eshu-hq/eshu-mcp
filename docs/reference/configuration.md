@@ -96,3 +96,24 @@ should pretend to offer.
 The two SSE limits are covered properly, with the shared-key maths, in
 [Operating: SSE session limits](../operations.md). Short version:
 leave them alone until `/healthz` tells you not to.
+
+## Response budgets
+
+Two 256 KiB limits guard a dispatch, in order. Neither is configurable;
+both are pinned by tests and must stay equal
+(`TestDispatchBudgetsStayAligned`).
+
+1. The raw read cap (`DefaultResponseByteBudget` in
+   `internal/readcontract`) guards the wire bytes of the core body. When
+   the body exceeds it, the read fails before parsing and the caller gets
+   the same `mcp_response_over_budget` envelope as the render budget:
+   tool name, the cap, and the budget guidance. The true size is unknown
+   beyond the cap, so the envelope reports at least cap + 1, never the
+   body itself.
+2. The render budget (`defaultToolResponseByteBudget` in
+   `internal/dispatch`) guards the rendered tool result. A result that
+   does not fit is paged (`budgetPagedTools`) or replaced by the same
+   envelope.
+
+A body of exactly 256 KiB passes the first limit; what happens next
+depends on the rendered size, exactly as before.
