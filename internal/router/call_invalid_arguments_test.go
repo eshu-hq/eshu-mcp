@@ -211,14 +211,13 @@ func serverRunDispatch(ctx context.Context, name string, args map[string]any) (a
 	return nil, nil
 }
 
-// TestCallSelectorRefusalIsInvalidArguments proves the #73 slice-1 fix: a
-// call_tool call that passes schema validation but names no usable selector
-// still answers mcp_router_invalid_arguments, now with the selector fields
-// that would satisfy the route. Validation still dispatches (see
+// TestCallSelectorRefusalIsInvalidArguments proves the #73 structured-refusal
+// fix: a call_tool call that passes schema validation but names no usable
+// selector still answers mcp_router_invalid_arguments, now with the selector
+// fields that would satisfy the route. Validation still dispatches (see
 // TestCallSelectorAlternativesDispatch); the refusal renders downstream.
-// A misspelled selector such as service for service_name no longer reaches
-// this table: closed-world validation rejects it naming the key (see
-// TestCallTypoIsInvalidArguments).
+// Undeclared-key rejection is HELD per the arbiter ruling, so a misspelled
+// selector still reaches this table and is refused as a missing selector.
 func TestCallSelectorRefusalIsInvalidArguments(t *testing.T) {
 	t.Parallel()
 
@@ -269,37 +268,6 @@ func TestCallSelectorRefusalIsInvalidArguments(t *testing.T) {
 			if !strings.Contains(text, field) {
 				t.Errorf("Call(%s, %v) names no %q field: %s", tc.tool, tc.args, field, text)
 			}
-		}
-	}
-}
-
-// TestCallTypoIsInvalidArguments proves the #73 closed-world fix: an
-// undeclared argument fails call_tool validation naming the key, before any
-// dispatch. The issue's exact repro — service for service_name — answers
-// mcp_router_invalid_arguments instead of dispatching into the plain-text
-// route refusal. The resolve_entity case pins an accepted consequence of
-// the audit: name is a deprecated route alias the schema does not declare,
-// so passing it beside the declared query fails naming name (the direct
-// tools/call path, which never validates, still honors the alias).
-func TestCallTypoIsInvalidArguments(t *testing.T) {
-	t.Parallel()
-
-	engine := testEngine()
-	cases := []struct {
-		tool string
-		args map[string]any
-		key  string
-	}{
-		{"get_service_story", map[string]any{"service": "example-service"}, "service"},
-		{"resolve_entity", map[string]any{"query": "q", "name": "n"}, "name"},
-	}
-	for _, tc := range cases {
-		text := invalidArgumentsBody(t, callMissingArgs(t, engine, tc.tool, tc.args))
-		if !strings.Contains(text, tc.key) {
-			t.Errorf("Call(%s, %v) field errors lack %q: %s", tc.tool, tc.args, tc.key, text)
-		}
-		if !strings.Contains(text, "additionalProperties") {
-			t.Errorf("Call(%s, %v) field errors lack the additionalProperties keyword: %s", tc.tool, tc.args, text)
 		}
 	}
 }

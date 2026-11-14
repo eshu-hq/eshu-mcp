@@ -185,10 +185,6 @@ func (e *Engine) view(c Candidate) candidateView {
 
 // boundFindRequest enforces MaxIntentBytes, MaxAnchorValueBytes, and the
 // closed anchor key set on a request that already passed schema validation.
-// The unknown-anchor branch below is now shadowed: the anchors object
-// declares its four properties, so closed-world validation reports an
-// undeclared anchor first, with the same invalid-arguments code. It stays
-// as a guard if the schema ever opens the anchors object again.
 func boundFindRequest(args map[string]any) ([]FieldError, bool) {
 	errs := &errorSink{}
 	if intent, ok := args["intent"].(string); ok && len(intent) > MaxIntentBytes {
