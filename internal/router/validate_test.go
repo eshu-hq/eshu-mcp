@@ -256,3 +256,110 @@ func TestDescribeBranches(t *testing.T) {
 		t.Fatal("fallback describe empty")
 	}
 }
+
+// additionalProperties: false (eshu-hq/eshu-mcp#86): a schema that declares
+// additionalProperties: false rejects a key it does not declare, so a
+// call_tool typo fails validation naming the key instead of passing silently
+// into a route refusal. A schema without additionalProperties (the default
+// open world) or with additionalProperties: true keeps accepting undeclared
+// keys, and an additionalProperties schema still governs the keys it covers.
+func TestValidateArgumentsRejectsUndeclaredKeys(t *testing.T) {
+	t.Parallel()
+
+	closedSchema := map[string]any{
+		"type":                 "object",
+		"properties":           map[string]any{"repo_id": map[string]any{"type": "string"}},
+		"additionalProperties": false,
+	}
+	closedNested := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"repo_id": map[string]any{"type": "string"},
+			"handles": map[string]any{
+				"type":  "array",
+				"items": map[string]any{"type": "object", "properties": map[string]any{"kind": map[string]any{"type": "string"}}, "additionalProperties": false},
+			},
+		},
+		"additionalProperties": false,
+	}
+
+	reject := []struct {
+		name        string
+		schema      any
+		args        map[string]any
+		wantPath    string
+		wantKeyword string
+	}{
+		{
+			"top level typo",
+			closedSchema,
+			map[string]any{"repo_id": "r1", "repo_name": "n"},
+			"repo_name", "additionalProperties",
+		},
+		{
+			"nested object typo",
+			closedNested,
+			map[string]any{"repo_id": "r1", "handles": []any{map[string]any{"kind": "file", "stop_line": 2}}},
+			"handles[0].stop_line", "additionalProperties",
+		},
+	}
+	for _, tc := range reject {
+		t.Run("reject/"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			errs := ValidateArguments(tc.schema, tc.args)
+			found := false
+			for _, e := range errs {
+				if e.Path == tc.wantPath && e.Keyword == tc.wantKeyword {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("ValidateArguments(%v) = %v, want %s at %s", tc.args, errs, tc.wantKeyword, tc.wantPath)
+			}
+		})
+	}
+
+	accept := []struct {
+		name   string
+		schema any
+		args   map[string]any
+	}{
+		{
+			"declared key passes",
+			closedSchema,
+			map[string]any{"repo_id": "r1"},
+		},
+		{
+			"absent additionalProperties stays open",
+			map[string]any{"type": "object", "properties": map[string]any{"repo_id": map[string]any{"type": "string"}}},
+			map[string]any{"repo_id": "r1", "anything": 1},
+		},
+		{
+			"explicit true stays open",
+			map[string]any{
+				"type":                 "object",
+				"properties":           map[string]any{"repo_id": map[string]any{"type": "string"}},
+				"additionalProperties": true,
+			},
+			map[string]any{"repo_id": "r1", "anything": 1},
+		},
+		{
+			"additionalProperties schema still governs its keys",
+			validateFixtureSchema(),
+			map[string]any{"repo_id": "r1", "inputs": map[string]any{"service_name": "api"}},
+		},
+		{
+			"null undeclared reads as absent",
+			closedSchema,
+			map[string]any{"repo_id": "r1", "repo_name": nil},
+		},
+	}
+	for _, tc := range accept {
+		t.Run("accept/"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			if errs := ValidateArguments(tc.schema, tc.args); len(errs) != 0 {
+				t.Fatalf("ValidateArguments(%v) = %v, want no errors", tc.args, errs)
+			}
+		})
+	}
+}

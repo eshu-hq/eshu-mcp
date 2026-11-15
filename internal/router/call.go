@@ -67,14 +67,7 @@ func (e *Engine) Call(ctx context.Context, req Request, args map[string]any) Cal
 		return out
 	}
 	if errs, truncated := ValidateArgumentsDetail(tool.InputSchema, arguments); len(errs) != 0 {
-		out.Result = errorResult("mcp_router_invalid_arguments", "arguments for "+name+" do not match its input schema",
-			map[string]any{
-				"tool":                   name,
-				"field_errors":           errs,
-				"field_errors_truncated": truncated,
-				"argument_names":         schemaArgumentNames(tool.InputSchema),
-				"schema_hint":            "call find_tool to see the full input schema and example for " + name,
-			})
+		out.Result = targetInvalidArgumentsResult(name, errs, truncated, tool.InputSchema)
 		return out
 	}
 
@@ -97,6 +90,45 @@ func toolSchema(name string) any {
 		}
 	}
 	return nil
+}
+
+// targetInvalidArgumentsResult builds the mcp_router_invalid_arguments result
+// for a target whose arguments violate its input schema, with the capped
+// argument-name echo and the find_tool schema hint. call_tool and the direct
+// tools/call path share it so both refusals are byte-identical.
+func targetInvalidArgumentsResult(name string, errs []FieldError, truncated bool, schema any) ToolResult {
+	return errorResult("mcp_router_invalid_arguments", "arguments for "+name+" do not match its input schema",
+		map[string]any{
+			"tool":                   name,
+			"field_errors":           errs,
+			"field_errors_truncated": truncated,
+			"argument_names":         schemaArgumentNames(schema),
+			"schema_hint":            "call find_tool to see the full input schema and example for " + name,
+		})
+}
+
+// ValidateDirectCall checks arguments against the named tool's input schema
+// and reports the router's mcp_router_invalid_arguments result when they
+// violate it, or nil when they are valid or the tool is unknown. The direct
+// tools/call path uses it so a direct call is validated exactly as call_tool
+// validates its target (eshu-hq/eshu-mcp#86).
+func ValidateDirectCall(tools []registry.ToolDefinition, name string, arguments map[string]any) *ToolResult {
+	var schema any
+	for _, tool := range tools {
+		if tool.Name == name {
+			schema = tool.InputSchema
+			break
+		}
+	}
+	if schema == nil {
+		return nil
+	}
+	errs, truncated := ValidateArgumentsDetail(schema, arguments)
+	if len(errs) == 0 {
+		return nil
+	}
+	result := targetInvalidArgumentsResult(name, errs, truncated, schema)
+	return &result
 }
 
 // schemaArgumentNames returns the argument names a tool's input schema

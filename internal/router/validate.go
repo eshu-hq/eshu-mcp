@@ -94,6 +94,14 @@ func boundEcho(text string) string {
 // declare are ignored, and a blank date-time is accepted because the handlers
 // trim it to "not set". default and description are annotations and are never
 // applied, so a validated call reaches dispatch byte-for-byte unchanged.
+//
+// An explicit additionalProperties: false closes the object: a key the
+// schema's properties do not declare is an additionalProperties violation, so
+// a call_tool typo fails here naming the key instead of dispatching into a
+// route refusal (eshu-hq/eshu-mcp#86). An additionalProperties schema still
+// governs the keys it covers, and an absent or explicit additionalProperties:
+// true keeps the object open. The direct tools/call path validates with this
+// same rule.
 func ValidateArguments(schema any, args map[string]any) []FieldError {
 	errs, _ := ValidateArgumentsDetail(schema, args)
 	return errs
@@ -216,6 +224,15 @@ func validateObject(schema map[string]any, object map[string]any, path string, e
 		}
 		if extraSchema, ok := extra.(map[string]any); ok {
 			validateValue(extraSchema, value, joinPath(path, key), errs)
+			continue
+		}
+		// additionalProperties: false rejects a key the schema's properties
+		// do not declare, so a call_tool typo fails here naming the key
+		// instead of dispatching into a route refusal (eshu-hq/eshu-mcp#86).
+		// An absent additionalProperties or an explicit true keeps the open
+		// world, and an additionalProperties schema governed the key above.
+		if closed, ok := extra.(bool); ok && !closed {
+			errs.add(FieldError{Path: joinPath(path, key), Keyword: "additionalProperties", Message: "is not a declared property"})
 		}
 	}
 }

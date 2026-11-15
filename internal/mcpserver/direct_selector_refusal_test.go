@@ -8,10 +8,14 @@ import (
 )
 
 // TestDirectSelectorRefusalIsInvalidArguments proves the #73 missing-selector
-// fix on the direct tools/call path, which never validates: a selectorless
-// list_repository_files call still answers the structured
-// mcp_router_invalid_arguments error naming repo_id, through the same
-// ToolErrorResultForCall rendering the routed call_tool path shares.
+// fix on the direct tools/call path: a call that passes schema validation but
+// names no usable selector still answers the structured
+// mcp_router_invalid_arguments error naming the selector fields, through the
+// same ToolErrorResultForCall rendering the routed call_tool path shares.
+// get_service_story is used because its schema requires no single selector,
+// so the direct-path validation (eshu-hq/eshu-mcp#86) admits it and the route
+// refusal still fires; list_repository_files now fails validation first
+// (repo_id is required), covered by TestDirectCallValidatesArguments.
 func TestDirectSelectorRefusalIsInvalidArguments(t *testing.T) {
 	t.Parallel()
 
@@ -20,7 +24,7 @@ func TestDirectSelectorRefusalIsInvalidArguments(t *testing.T) {
 	defer cleanup()
 
 	_, decoded := postMessage(t, mcp.Handler(nil),
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_repository_files","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_service_story","arguments":{}}}`,
 		"Bearer k")
 	result := mustMap(t, decoded["result"])
 	if result["isError"] != true {
@@ -32,7 +36,7 @@ func TestDirectSelectorRefusalIsInvalidArguments(t *testing.T) {
 	}
 	block := mustMap(t, content[0])
 	text, ok := block["text"].(string)
-	if !ok || !strings.Contains(text, "repo_id is required") {
+	if !ok || !strings.Contains(text, "get_service_story requires service_id, workload_id, or service_name") {
 		t.Errorf("direct tools/call text = %q, want the historic refusal", text)
 	}
 	structured := mustMap(t, result["structuredContent"])
@@ -40,15 +44,15 @@ func TestDirectSelectorRefusalIsInvalidArguments(t *testing.T) {
 	if failure["code"] != "mcp_router_invalid_arguments" {
 		t.Errorf("direct tools/call code = %v, want mcp_router_invalid_arguments", failure["code"])
 	}
-	if failure["message"] != "repo_id is required" {
+	if failure["message"] != "get_service_story requires service_id, workload_id, or service_name" {
 		t.Errorf("direct tools/call message = %v, want the historic refusal", failure["message"])
 	}
 	details := mustMap(t, failure["details"])
-	if details["tool"] != "list_repository_files" {
-		t.Errorf("direct tools/call details.tool = %v, want list_repository_files", details["tool"])
+	if details["tool"] != "get_service_story" {
+		t.Errorf("direct tools/call details.tool = %v, want get_service_story", details["tool"])
 	}
 	fields, ok := details["fields"].([]any)
-	if !ok || len(fields) != 1 || fields[0] != "repo_id" {
-		t.Errorf("direct tools/call details.fields = %v, want [repo_id]", details["fields"])
+	if !ok || len(fields) != 3 || fields[0] != "service_id" || fields[1] != "workload_id" || fields[2] != "service_name" {
+		t.Errorf("direct tools/call details.fields = %v, want [service_id workload_id service_name]", details["fields"])
 	}
 }

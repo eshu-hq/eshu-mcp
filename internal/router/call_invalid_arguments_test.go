@@ -216,8 +216,10 @@ func serverRunDispatch(ctx context.Context, name string, args map[string]any) (a
 // selector still answers mcp_router_invalid_arguments, now with the selector
 // fields that would satisfy the route. Validation still dispatches (see
 // TestCallSelectorAlternativesDispatch); the refusal renders downstream.
-// Undeclared-key rejection is HELD per the arbiter ruling, so a misspelled
-// selector still reaches this table and is refused as a missing selector.
+// A misspelled selector such as service for service_name still reaches this
+// table (target schemas stay open until the declare-or-remove follow-ups
+// land); the call_tool wrapper's own closed-world rejection is pinned by
+// TestCallToolRejectsUndeclaredKey.
 func TestCallSelectorRefusalIsInvalidArguments(t *testing.T) {
 	t.Parallel()
 
@@ -269,5 +271,31 @@ func TestCallSelectorRefusalIsInvalidArguments(t *testing.T) {
 				t.Errorf("Call(%s, %v) names no %q field: %s", tc.tool, tc.args, field, text)
 			}
 		}
+	}
+}
+
+// TestCallToolRejectsUndeclaredKey proves the closed-world fix
+// (eshu-hq/eshu-mcp#86): a key the call_tool schema does not declare (it
+// declares additionalProperties: false) fails call_tool validation naming the
+// key, before any dispatch. The known-key counterpart is
+// TestCallDispatchesRegisteredTool.
+func TestCallToolRejectsUndeclaredKey(t *testing.T) {
+	t.Parallel()
+
+	engine := testEngine()
+	called := false
+	out := engine.Call(context.Background(), Request{Dispatch: func(context.Context, string, map[string]any) (any, error) {
+		called = true
+		return nil, nil
+	}}, map[string]any{"name": "get_repo_context", "arguments": map[string]any{"repo_id": "r1"}, "typo": 123})
+	if out.Dispatched || called {
+		t.Fatalf("Call() dispatched an undeclared call_tool key, want the invalid-arguments error")
+	}
+	text := invalidArgumentsBody(t, out)
+	if !strings.Contains(text, "typo") {
+		t.Errorf("Call() field errors lack the undeclared key %q: %s", "typo", text)
+	}
+	if !strings.Contains(text, "additionalProperties") {
+		t.Errorf("Call() field errors lack the additionalProperties keyword: %s", text)
 	}
 }
