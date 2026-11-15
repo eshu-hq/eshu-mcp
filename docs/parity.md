@@ -74,6 +74,49 @@ Proof: `python3 scripts/check-parity.py`, `go test ./...`, and the new
 `TestIncidentAndRunFallbackKeysDeclared` plus the route-keeps-reads pins
 in `internal/dispatch` and `internal/dispatch/cicd`.
 
+## Selector precedence and decision table (eshu-hq/eshu-mcp#75)
+
+The tool descriptions now state, per family, which selector wins and when to
+use one repo tool over another. No tool is removed or renamed. The arbiter
+ruling (#75) is "reject conflicting selectors; identical or agreeing values
+are accepted; keep first-wins only where it is already pinned":
+
+- **Service selectors** (`get_service_story`, `list_service_api_endpoints`,
+  `list_service_downstream_consumers`, `get_service_intelligence_report`):
+  `service_id` > `workload_id` > `service_name`, first-wins — already pinned
+  by `TestListServiceAPIEndpointsSelectorPrecedence` and
+  `TestListServiceDownstreamConsumersSelectorPrecedence`, so it is documented
+  in place, not changed. `investigate_service`: `service_id` > `service_name`.
+- **Repository filter** (`repo`, `repository_id`, `repo_id`): the three are
+  aliases for one filter and are now refused when conflicting
+  (`serviceStoryRepositorySelector` returns an error naming both), accepted
+  when identical. This was previously silent first-wins, documented nowhere;
+  it is now a RED/GREEN-pinned route refusal in
+  `internal/dispatch/service/context`.
+- **Repo filter applicability**: the `repo`/`repository_id`/`repo_id` field
+  descriptions said "used with service_name"; they now say the filter applies
+  with every service selector (`service_id`, `workload_id`, or `service_name`).
+- **Decision table**: `get_repo_summary` for counts and languages,
+  `get_repo_context` for relationships, consumers, and API surface,
+  `get_repo_story` for a narrative with sections and drilldowns. The sentence
+  is appended to the three repo tool descriptions and the five service-family
+  descriptions.
+
+Description changes land in `scripts/seed/render.py` (the
+`SELECTOR_CONTRACT_SENTENCES` and `SELECTOR_FIELD_DESCRIPTIONS` tables), then
+re-render at the unchanged source commit `dd63fcfe4d`, so no hand edits. The
+sentences are pinned by `TestSelectorPrecedenceContractText` and the field
+wording by `TestRepoFilterFieldDescriptions`, in the style of the #61
+`TestDeliberateSelectorContractText`. `TestResolveRouteRefusesMissingSelector`
+is unchanged (the refusal table has no repo-conflict rows).
+
+Edge cases noted: a non-handle `service_id` is dropped from the query
+(`canonicalWorkloadIdentifier`); a plain name in `workload_id` goes into the
+path only; the repo-filter conflict check trims both aliases before comparing.
+
+Proof: `python3 scripts/check-parity.py`, `go test ./internal/dispatch/...`,
+`go test .`, `go vet ./...`, and the new pins above.
+
 ## Edge credential admission (eshu-hq/eshu-mcp#48, #50)
 
 The edge door check classifies credentials by shape and does not admit them.

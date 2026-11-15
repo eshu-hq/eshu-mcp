@@ -97,8 +97,12 @@ func TestIdentifierHelpers(t *testing.T) {
 	if firstSelector(routecontract.Arguments{}, "a") != "" {
 		t.Fatal("firstSelector empty")
 	}
-	if serviceStoryRepositorySelector(routecontract.Arguments{"repo_id": "r"}) != "r" {
-		t.Fatal("repo_id alias")
+	repo, err := serviceStoryRepositorySelector("get_service_story", routecontract.Arguments{"repo_id": "r"})
+	if err != nil || repo != "r" {
+		t.Fatalf("repo_id alias = %q, %v", repo, err)
+	}
+	if _, err := serviceStoryRepositorySelector("get_service_story", routecontract.Arguments{"repo": "a", "repository_id": "b"}); err == nil {
+		t.Fatal("conflicting repository selectors passed")
 	}
 	if normalizeQualifiedIdentifier("service:pay") != "pay" {
 		t.Fatal("prefix strip")

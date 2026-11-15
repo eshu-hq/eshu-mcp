@@ -1,6 +1,7 @@
 package servicecontexttools
 
 import (
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -68,7 +69,11 @@ func serviceIntelligenceReportRoute(args routecontract.Arguments) (routecontract
 	if serviceID := canonicalWorkloadIdentifier(selector); serviceID != "" {
 		q["service_id"] = serviceID
 	}
-	if repo := serviceStoryRepositorySelector(args); repo != "" {
+	repo, err := serviceStoryRepositorySelector("get_service_intelligence_report", args)
+	if err != nil {
+		return routecontract.Request{}, err
+	}
+	if repo != "" {
 		q["repo"] = repo
 	}
 	return routecontract.Request{
@@ -137,7 +142,11 @@ func serviceSelectorRoute(args routecontract.Arguments, toolName string, suffix 
 		if serviceID := canonicalWorkloadIdentifier(selector); serviceID != "" {
 			q["service_id"] = serviceID
 		}
-		if repo := serviceStoryRepositorySelector(args); repo != "" {
+		repo, err := serviceStoryRepositorySelector(toolName, args)
+		if err != nil {
+			return routecontract.Request{}, err
+		}
+		if repo != "" {
 			q["repo"] = repo
 		}
 	}
@@ -170,7 +179,11 @@ func serviceAPIEndpointsRoute(args routecontract.Arguments) (routecontract.Reque
 	if serviceID := canonicalWorkloadIdentifier(selector); serviceID != "" {
 		q["service_id"] = serviceID
 	}
-	if repo := serviceStoryRepositorySelector(args); repo != "" {
+	repo, err := serviceStoryRepositorySelector("list_service_api_endpoints", args)
+	if err != nil {
+		return routecontract.Request{}, err
+	}
+	if repo != "" {
 		q["repo"] = repo
 	}
 	if _, present := args["limit"]; present {
@@ -210,7 +223,11 @@ func serviceDownstreamConsumersRoute(args routecontract.Arguments) (routecontrac
 	if serviceID := canonicalWorkloadIdentifier(selector); serviceID != "" {
 		q["service_id"] = serviceID
 	}
-	if repo := serviceStoryRepositorySelector(args); repo != "" {
+	repo, err := serviceStoryRepositorySelector("list_service_downstream_consumers", args)
+	if err != nil {
+		return routecontract.Request{}, err
+	}
+	if repo != "" {
 		q["repo"] = repo
 	}
 	if _, present := args["limit"]; present {
@@ -254,7 +271,11 @@ func investigateServiceRoute(args routecontract.Arguments) (routecontract.Reques
 	if serviceID := canonicalWorkloadIdentifier(serviceName); serviceID != "" {
 		q["service_id"] = serviceID
 	}
-	if repo := serviceStoryRepositorySelector(args); repo != "" {
+	repo, err := serviceStoryRepositorySelector("investigate_service", args)
+	if err != nil {
+		return routecontract.Request{}, err
+	}
+	if repo != "" {
 		q["repo"] = repo
 	}
 	return routecontract.Request{
@@ -276,16 +297,29 @@ func firstSelector(args routecontract.Arguments, keys ...string) string {
 	return ""
 }
 
-// serviceStoryRepositorySelector returns the first non-blank repository
-// selector among repo, repository_id, and repo_id, matching the alias order
-// the pre-extraction root switch checked.
-func serviceStoryRepositorySelector(args routecontract.Arguments) string {
-	for _, key := range []string{"repo", "repository_id", "repo_id"} {
-		if selector := strings.TrimSpace(args.String(key)); selector != "" {
-			return selector
+// serviceStoryRepositorySelector returns the repository selector among repo,
+// repository_id, and repo_id. The three are aliases for one filter, so a
+// caller that sends more than one with different values is refused here
+// instead of letting one silently win (eshu-hq/eshu-mcp#75): a conflicting
+// filter hides which repository the caller meant. Identical values are
+// accepted, and a missing filter returns "" with a nil error.
+func serviceStoryRepositorySelector(toolName string, args routecontract.Arguments) (string, error) {
+	keys := []string{"repo", "repository_id", "repo_id"}
+	var chosen, chosenKey string
+	for _, key := range keys {
+		selector := strings.TrimSpace(args.String(key))
+		if selector == "" {
+			continue
+		}
+		if chosen == "" {
+			chosen, chosenKey = selector, key
+			continue
+		}
+		if selector != chosen {
+			return "", fmt.Errorf("%s: conflicting repository selectors %s and %s; give one", toolName, chosenKey, key)
 		}
 	}
-	return ""
+	return chosen, nil
 }
 
 // normalizeQualifiedIdentifier strips a "<type>:" prefix from a qualified
