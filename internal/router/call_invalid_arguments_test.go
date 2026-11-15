@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	registry "github.com/eshu-hq/eshu-mcp"
+	"github.com/eshu-hq/eshu-mcp/internal/dispatch"
+	"github.com/eshu-hq/eshu-mcp/internal/resultshape"
 )
 
 // Required-argument wire shape (eshu-hq/eshu-mcp#61): a call_tool target
@@ -193,6 +195,79 @@ func TestCallSelectorAlternativesDispatch(t *testing.T) {
 				t.Fatalf("marshal structured content: %v", marshalErr)
 			}
 			t.Errorf("Call(%s, %v) refused by validation, want dispatch to the handler: %s", name, args, body)
+		}
+	}
+}
+
+// serverRunDispatch serves a dispatched call_tool target the way the MCP root
+// does: production dispatch, then the shared ToolErrorResultForCall rendering
+// the root serves for a direct tools/call. A route refusal short-circuits
+// before any core call, so the read client is never touched.
+func serverRunDispatch(ctx context.Context, name string, args map[string]any) (any, error) {
+	_, err := dispatch.Dispatch(ctx, nil, name, args, "", nil, dispatch.DefaultOptions())
+	if err != nil {
+		return dispatch.ToolErrorResultForCall(resultshape.Dual, name, err, nil, dispatch.DefaultOptions().ResponseByteBudget), nil
+	}
+	return nil, nil
+}
+
+// TestCallSelectorRefusalIsInvalidArguments proves the #73 structured-refusal
+// fix: a call_tool call that passes schema validation but names no usable
+// selector still answers mcp_router_invalid_arguments, now with the selector
+// fields that would satisfy the route. Validation still dispatches (see
+// TestCallSelectorAlternativesDispatch); the refusal renders downstream.
+// Undeclared-key rejection is HELD per the arbiter ruling, so a misspelled
+// selector still reaches this table and is refused as a missing selector.
+func TestCallSelectorRefusalIsInvalidArguments(t *testing.T) {
+	t.Parallel()
+
+	engine := testEngine()
+	storyFields := []string{"service_id", "workload_id", "service_name"}
+	cases := []struct {
+		tool   string
+		args   map[string]any
+		fields []string
+	}{
+		{"get_service_story", map[string]any{}, storyFields},
+		{"get_service_story", map[string]any{"service_id": "   "}, storyFields},
+		{"get_service_story", map[string]any{"service_id": nil}, storyFields},
+		{"get_service_intelligence_report", map[string]any{}, storyFields},
+		{"list_service_api_endpoints", map[string]any{}, storyFields},
+		{"list_service_downstream_consumers", map[string]any{}, storyFields},
+		{"investigate_service", map[string]any{}, []string{"service_id", "service_name"}},
+		{"get_repo_summary", map[string]any{}, []string{"repo_id", "repo_name"}},
+		{"get_service_context", map[string]any{"workload_id": "   "}, []string{"workload_id"}},
+	}
+	for _, tc := range cases {
+		out := engine.Call(context.Background(), Request{Dispatch: serverRunDispatch},
+			map[string]any{"name": tc.tool, "arguments": tc.args})
+		if !out.Dispatched || out.Err != nil {
+			t.Errorf("Call(%s, %v) dispatched = %v err = %v, want the route refusal rendered downstream",
+				tc.tool, tc.args, out.Dispatched, out.Err)
+			continue
+		}
+		rendered, ok := out.Value.(dispatch.ToolResult)
+		if !ok {
+			t.Errorf("Call(%s, %v) value type %T, want dispatch.ToolResult", tc.tool, tc.args, out.Value)
+			continue
+		}
+		if !rendered.IsError {
+			t.Errorf("Call(%s, %v) isError = false, want true", tc.tool, tc.args)
+			continue
+		}
+		body, marshalErr := json.Marshal(rendered.StructuredContent)
+		if marshalErr != nil {
+			t.Fatalf("marshal structured content: %v", marshalErr)
+		}
+		text := string(body)
+		if !strings.Contains(text, "mcp_router_invalid_arguments") {
+			t.Errorf("Call(%s, %v) lacks the invalid-arguments code: %s", tc.tool, tc.args, text)
+			continue
+		}
+		for _, field := range tc.fields {
+			if !strings.Contains(text, field) {
+				t.Errorf("Call(%s, %v) names no %q field: %s", tc.tool, tc.args, field, text)
+			}
 		}
 	}
 }

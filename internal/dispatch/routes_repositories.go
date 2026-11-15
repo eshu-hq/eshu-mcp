@@ -1,7 +1,6 @@
 package dispatch
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -21,13 +20,18 @@ import (
 // validation no longer forces a selector, this helper enforces the
 // "at least one present" invariant and returns a clear error when both are
 // absent instead of building a malformed empty-selector path.
-func repositorySummarySelector(args map[string]any) (string, error) {
+func repositorySummarySelector(toolName string, args map[string]any) (string, error) {
+	fields := []string{"repo_id", "repo_name"}
 	selector := str(args, "repo_id")
 	if selector == "" {
 		selector = str(args, "repo_name")
 	}
 	if selector == "" {
-		return "", fmt.Errorf("repo_id or repo_name is required")
+		return "", &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  fields,
+			Message: "repo_id or repo_name is required",
+		}
 	}
 	return selector, nil
 }
@@ -139,7 +143,7 @@ func repositoryRoute(toolName string, args map[string]any) (*routecontract.Reque
 		}
 		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(str(args, "repo_id")) + "/story", Query: q}, true, nil
 	case "get_repo_summary":
-		selector, err := repositorySummarySelector(args)
+		selector, err := repositorySummarySelector(toolName, args)
 		if err != nil {
 			return nil, true, err
 		}

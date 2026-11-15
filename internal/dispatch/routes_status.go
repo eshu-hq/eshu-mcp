@@ -1,7 +1,6 @@
 package dispatch
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -29,11 +28,19 @@ func statusRoute(toolName string, args map[string]any) (*routecontract.Request, 
 	case "list_dead_letter_work_items":
 		limit := intOr(args, "limit", 0)
 		if limit <= 0 {
-			return nil, true, fmt.Errorf("limit is required")
+			return nil, true, &routecontract.MissingSelectorError{
+				Tool:    toolName,
+				Fields:  []string{"limit"},
+				Message: "limit is required",
+			}
 		}
 		timeoutMS := intOr(args, "timeout_ms", 0)
 		if timeoutMS <= 0 {
-			return nil, true, fmt.Errorf("timeout_ms is required")
+			return nil, true, &routecontract.MissingSelectorError{
+				Tool:    toolName,
+				Fields:  []string{"timeout_ms"},
+				Message: "timeout_ms is required",
+			}
 		}
 		body := map[string]any{
 			"limit":      limit,
@@ -53,9 +60,9 @@ func statusRoute(toolName string, args map[string]any) (*routecontract.Request, 
 		}
 		return &routecontract.Request{Method: "POST", Path: "/api/v0/admin/dead-letters/query", Body: body}, true, nil
 	case "list_reducer_input_invalid_facts":
-		return reducerInputInvalidFactsRoute(args)
+		return reducerInputInvalidFactsRoute(toolName, args)
 	case "list_changed_since_poisoned_links":
-		return changedSincePoisonedLinksRoute(args)
+		return changedSincePoisonedLinksRoute(toolName, args)
 	case "get_freshness_causality":
 		return &routecontract.Request{Method: "GET", Path: "/api/v0/status/freshness-causality"}, true, nil
 	case "get_collector_readiness":
@@ -103,7 +110,11 @@ func statusRoute(toolName string, args map[string]any) (*routecontract.Request, 
 	case "get_component_extension_diagnostics":
 		componentID := strings.TrimSpace(str(args, "component_id"))
 		if componentID == "" {
-			return nil, true, fmt.Errorf("component_id is required")
+			return nil, true, &routecontract.MissingSelectorError{
+				Tool:    toolName,
+				Fields:  []string{"component_id"},
+				Message: "component_id is required",
+			}
 		}
 		return &routecontract.Request{
 			Method: "GET",
@@ -116,7 +127,11 @@ func statusRoute(toolName string, args map[string]any) (*routecontract.Request, 
 	case "get_collector_extraction_readiness":
 		family := strings.TrimSpace(str(args, "family"))
 		if family == "" {
-			return nil, true, fmt.Errorf("family is required")
+			return nil, true, &routecontract.MissingSelectorError{
+				Tool:    toolName,
+				Fields:  []string{"family"},
+				Message: "family is required",
+			}
 		}
 		return &routecontract.Request{
 			Method: "GET",
@@ -129,7 +144,11 @@ func statusRoute(toolName string, args map[string]any) (*routecontract.Request, 
 	case "get_fact_schema_version":
 		factKind := strings.TrimSpace(str(args, "fact_kind"))
 		if factKind == "" {
-			return nil, true, fmt.Errorf("fact_kind is required")
+			return nil, true, &routecontract.MissingSelectorError{
+				Tool:    toolName,
+				Fields:  []string{"fact_kind"},
+				Message: "fact_kind is required",
+			}
 		}
 		factRoute := routecontract.Request{
 			Method: "GET",
@@ -150,22 +169,38 @@ func statusRoute(toolName string, args map[string]any) (*routecontract.Request, 
 // timeout_ms are required; domain and fact_kind are optional passthrough
 // filters. Extracted from statusRoute to keep that switch under the funlen
 // cap.
-func reducerInputInvalidFactsRoute(args map[string]any) (*routecontract.Request, bool, error) {
+func reducerInputInvalidFactsRoute(toolName string, args map[string]any) (*routecontract.Request, bool, error) {
 	scopeID := strings.TrimSpace(str(args, "scope_id"))
 	if scopeID == "" {
-		return nil, true, fmt.Errorf("scope_id is required")
+		return nil, true, &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  []string{"scope_id"},
+			Message: "scope_id is required",
+		}
 	}
 	generationID := strings.TrimSpace(str(args, "generation_id"))
 	if generationID == "" {
-		return nil, true, fmt.Errorf("generation_id is required")
+		return nil, true, &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  []string{"generation_id"},
+			Message: "generation_id is required",
+		}
 	}
 	limit := intOr(args, "limit", 0)
 	if limit <= 0 {
-		return nil, true, fmt.Errorf("limit is required")
+		return nil, true, &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  []string{"limit"},
+			Message: "limit is required",
+		}
 	}
 	timeoutMS := intOr(args, "timeout_ms", 0)
 	if timeoutMS <= 0 {
-		return nil, true, fmt.Errorf("timeout_ms is required")
+		return nil, true, &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  []string{"timeout_ms"},
+			Message: "timeout_ms is required",
+		}
 	}
 	body := map[string]any{
 		"scope_id":      scopeID,
@@ -190,14 +225,22 @@ func reducerInputInvalidFactsRoute(args map[string]any) (*routecontract.Request,
 // (#7127 ruling 8.10). limit and timeout_ms are required; status, scope_id,
 // and cursor are optional passthrough filters. Extracted from statusRoute to
 // keep that switch under the funlen cap.
-func changedSincePoisonedLinksRoute(args map[string]any) (*routecontract.Request, bool, error) {
+func changedSincePoisonedLinksRoute(toolName string, args map[string]any) (*routecontract.Request, bool, error) {
 	limit := intOr(args, "limit", 0)
 	if limit <= 0 {
-		return nil, true, fmt.Errorf("limit is required")
+		return nil, true, &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  []string{"limit"},
+			Message: "limit is required",
+		}
 	}
 	timeoutMS := intOr(args, "timeout_ms", 0)
 	if timeoutMS <= 0 {
-		return nil, true, fmt.Errorf("timeout_ms is required")
+		return nil, true, &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  []string{"timeout_ms"},
+			Message: "timeout_ms is required",
+		}
 	}
 	body := map[string]any{
 		"limit":      limit,

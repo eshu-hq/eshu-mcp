@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -94,8 +95,8 @@ func TestCallUnknownToolSuggests(t *testing.T) {
 }
 
 // TestCallValidatesTargetArguments proves a schema-violating target call
-// answers mcp_router_invalid_arguments with field errors, the input schema,
-// and an example, and never reaches the Dispatcher.
+// answers mcp_router_invalid_arguments with field errors and the argument
+// names, and never reaches the Dispatcher.
 func TestCallValidatesTargetArguments(t *testing.T) {
 	t.Parallel()
 
@@ -113,10 +114,82 @@ func TestCallValidatesTargetArguments(t *testing.T) {
 		t.Fatalf("marshal structured content: %v", marshalErr)
 	}
 	text := string(body)
-	for _, want := range []string{"mcp_router_invalid_arguments", "field_errors", "input_schema", "example"} {
+	for _, want := range []string{"mcp_router_invalid_arguments", "field_errors", "argument_names", "schema_hint", "find_tool"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("Call() result lacks %q: %s", want, text)
 		}
+	}
+}
+
+// TestCallInvalidArgumentsEchoIsCapped proves the #73 echo shrink: a
+// schema-invalid call no longer echoes the full input schema and example
+// (several kilobytes for the supply-chain tools). It answers the field
+// errors plus the argument names, capped at maxArgumentNames, and points to
+// find_tool for the full schema instead of carrying it inline.
+func TestCallInvalidArgumentsEchoIsCapped(t *testing.T) {
+	t.Parallel()
+
+	engine := testEngine()
+	// get_supply_chain_impact_inventory declares 22 arguments with typed
+	// schemas and descriptions; the old echo was the largest in the catalog.
+	out := engine.Call(context.Background(), Request{Dispatch: testDispatch(nil)},
+		map[string]any{
+			"name":      "get_supply_chain_impact_inventory",
+			"arguments": map[string]any{"limit": "not-an-integer"},
+		})
+	if out.Dispatched {
+		t.Fatal("Call() dispatched schema-invalid arguments, want the invalid-arguments error")
+	}
+	body, marshalErr := json.Marshal(out.Result.StructuredContent)
+	if marshalErr != nil {
+		t.Fatalf("marshal structured content: %v", marshalErr)
+	}
+	text := string(body)
+	// The full schema and example are gone from the echo: no property
+	// descriptions travel, and the schema-hint points at find_tool instead.
+	for _, gone := range []string{`"input_schema"`, `"example"`, `"description"`} {
+		if strings.Contains(text, gone) {
+			t.Errorf("Call() result still echoes %s: %s", gone, text)
+		}
+	}
+	for _, want := range []string{"argument_names", "schema_hint", "find_tool"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Call() result lacks %q: %s", want, text)
+		}
+	}
+	// The capped echo is far smaller than the full schema plus example the
+	// old path shipped (>= 4KB for this tool alone).
+	if len(body) >= 4096 {
+		t.Errorf("Call() result is %d bytes, want the capped echo under 4KB: %s", len(body), text)
+	}
+}
+
+// TestSchemaArgumentNamesCapsAndSorts proves the argument-name echo is
+// deterministic (alphabetical) and capped at maxArgumentNames, so a tool
+// with a long property list never echoes more than the cap.
+func TestSchemaArgumentNamesCapsAndSorts(t *testing.T) {
+	t.Parallel()
+
+	properties := map[string]any{}
+	for i := 0; i < maxArgumentNames+10; i++ {
+		properties[fmt.Sprintf("arg_%03d", i)] = map[string]any{"type": "string"}
+	}
+	names := schemaArgumentNames(map[string]any{"type": "object", "properties": properties})
+	if len(names) != maxArgumentNames {
+		t.Fatalf("schemaArgumentNames() = %d names, want %d", len(names), maxArgumentNames)
+	}
+	if names[0] != "arg_000" {
+		t.Errorf("schemaArgumentNames()[0] = %q, want arg_000", names[0])
+	}
+	if names[maxArgumentNames-1] != fmt.Sprintf("arg_%03d", maxArgumentNames-1) {
+		t.Errorf("schemaArgumentNames() tail = %q, want the alphabetical cap", names[maxArgumentNames-1])
+	}
+
+	if got := schemaArgumentNames(nil); got != nil {
+		t.Errorf("schemaArgumentNames(nil) = %v, want nil", got)
+	}
+	if got := schemaArgumentNames(map[string]any{"type": "object"}); got != nil {
+		t.Errorf("schemaArgumentNames(no properties) = %v, want nil", got)
 	}
 }
 
