@@ -251,3 +251,41 @@ func TestDispatchRefusesEmptyPathSegment(t *testing.T) {
 		t.Errorf("core saw path %q, want no core call on a refused route", stub.seenPath)
 	}
 }
+
+// TestDispatchAmbiguousServiceListsCandidates proves a core ambiguous-service
+// 409 envelope renders its candidate service_ids into the text block, so a
+// text-only client can retry with a specific service_id without reading the
+// embedded resource or structuredContent.
+func TestDispatchAmbiguousServiceListsCandidates(t *testing.T) {
+	t.Parallel()
+
+	body := `{"data":null,"truth":null,"error":{` +
+		`"code":"ambiguous",` +
+		`"message":"service selector \"api\" matched multiple services; pass the service_id of one candidate (repo separates only services in different repositories)",` +
+		`"details":{"status":"ambiguous","selector":"api","truncated":false,"candidates":[` +
+		`{"service_id":"workload:api","service_name":"api","kind":"service","repo_id":"repo-1","repo_name":"eshu-hq/api","environment":"","match_basis":"workload_name","next_selector":{"argument":"service_id","value":"workload:api"}},` +
+		`{"service_id":"workload:api-v2","service_name":"api","kind":"service","repo_id":"repo-2","repo_name":"eshu-hq/api-v2","environment":"","match_basis":"workload_name","next_selector":{"argument":"service_id","value":"workload:api-v2"}}` +
+		`]}}}`
+	stub := &stubCore{status: 409, body: body}
+	result, err := dispatchAgainstStub(t, stub, "investigate_service",
+		map[string]any{"service_name": "api"}, "", DefaultOptions())
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v, want nil", err)
+	}
+	if !result.IsError {
+		t.Error("Dispatch() IsError = false, want true for a 409 envelope")
+	}
+	rendered := RenderToolResult("investigate_service", result)
+	if len(rendered.Content) == 0 || rendered.Content[0].Type != "text" {
+		t.Fatalf("rendered content = %+v, want a leading text block", rendered.Content)
+	}
+	text := rendered.Content[0].Text
+	for _, want := range []string{"workload:api", "eshu-hq/api", "workload:api-v2", "eshu-hq/api-v2"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("text block %q lacks %q", text, want)
+		}
+	}
+	if len(text) > maxSummaryLength+3 {
+		t.Errorf("text block length %d exceeds the bound", len(text))
+	}
+}

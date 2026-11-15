@@ -1,6 +1,7 @@
 package dispatch
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -14,20 +15,41 @@ func freshTruth() *TruthEnvelope {
 }
 
 // TestSummarizeEnvelopeErrors proves error envelopes render the code and
-// message in every combination.
+// message in every combination, and that an ambiguous error carries its
+// candidate ids in the text so a text-only client can retry.
 func TestSummarizeEnvelopeErrors(t *testing.T) {
 	t.Parallel()
 
+	const ambiguousMessage = `service selector "api" matched multiple services; pass the service_id of one candidate (repo separates only services in different repositories)`
+
 	cases := map[string]struct {
-		code, message, want string
+		code, message string
+		details       map[string]any
+		want          string
 	}{
-		"code and message": {"mcp_timeout", "too slow", "error mcp_timeout: too slow"},
-		"code only":        {"mcp_timeout", "", "error mcp_timeout"},
-		"message only":     {"", "too slow", "too slow"},
-		"neither":          {"", "", "Eshu query returned an error."},
+		"code and message": {"mcp_timeout", "too slow", nil, "error mcp_timeout: too slow"},
+		"code only":        {"mcp_timeout", "", nil, "error mcp_timeout"},
+		"message only":     {"", "too slow", nil, "too slow"},
+		"neither":          {"", "", nil, "Eshu query returned an error."},
+		"ambiguous one candidate": {
+			code:    "ambiguous",
+			message: ambiguousMessage,
+			details: map[string]any{
+				"candidates": []any{
+					map[string]any{"service_id": "workload:api", "repo_name": "eshu-hq/api"},
+				},
+			},
+			want: `error ambiguous: ` + ambiguousMessage + `; candidates: workload:api (eshu-hq/api)`,
+		},
+		"ambiguous zero candidates": {
+			code:    "ambiguous",
+			message: ambiguousMessage,
+			details: map[string]any{"candidates": []any{}},
+			want:    `error ambiguous: ` + ambiguousMessage,
+		},
 	}
 	for name, c := range cases {
-		got := summarizeToolText("find_code", &ResponseEnvelope{Error: &ErrorEnvelope{Code: ErrorCode(c.code), Message: c.message}})
+		got := summarizeToolText("find_code", &ResponseEnvelope{Error: &ErrorEnvelope{Code: ErrorCode(c.code), Message: c.message, Details: c.details}})
 		if got != c.want {
 			t.Errorf("%s: got %q, want %q", name, got, c.want)
 		}
@@ -35,6 +57,112 @@ func TestSummarizeEnvelopeErrors(t *testing.T) {
 	if got := summarizeToolText("find_code", nil); got != "Eshu query completed." {
 		t.Errorf("nil envelope summary = %q", got)
 	}
+}
+
+// TestSummarizeEnvelopeErrorCandidates drives the candidate-list rendering for
+// the ambiguous-service error: the 10-candidate cap, legacy handle candidates,
+// missing repo_names, skipped ids, and clamp behavior.
+func TestSummarizeEnvelopeErrorCandidates(t *testing.T) {
+	t.Parallel()
+
+	message := `service selector "api" matched multiple services; pass the service_id of one candidate (repo separates only services in different repositories)`
+
+	t.Run("ten candidates at the cap all render", func(t *testing.T) {
+		t.Parallel()
+
+		candidates := make([]any, 0, 10)
+		for i := 0; i < 10; i++ {
+			candidates = append(candidates, map[string]any{
+				"service_id": fmt.Sprintf("workload:api-%d", i),
+				"repo_name":  fmt.Sprintf("repo-%d", i),
+			})
+		}
+		got := summarizeToolText("find_code", &ResponseEnvelope{Error: &ErrorEnvelope{
+			Code:    "ambiguous",
+			Message: message,
+			Details: map[string]any{"candidates": candidates},
+		}})
+		for i := 0; i < 10; i++ {
+			if !strings.Contains(got, fmt.Sprintf("workload:api-%d", i)) {
+				t.Errorf("summary %q lacks candidate workload:api-%d", got, i)
+			}
+			if !strings.Contains(got, fmt.Sprintf("repo-%d", i)) {
+				t.Errorf("summary %q lacks repo-%d", got, i)
+			}
+		}
+		if strings.Contains(got, "more") {
+			t.Errorf("summary %q reports omitted candidates, want all 10", got)
+		}
+	})
+
+	t.Run("legacy handle candidate without repo_name", func(t *testing.T) {
+		t.Parallel()
+
+		got := summarizeToolText("find_code", &ResponseEnvelope{Error: &ErrorEnvelope{
+			Code:    "ambiguous",
+			Message: message,
+			Details: map[string]any{
+				"candidates": []any{
+					map[string]any{"service_id": "workload:legacy", "legacy_id": true},
+				},
+			},
+		}})
+		if !strings.Contains(got, "workload:legacy") {
+			t.Errorf("summary %q lacks the legacy handle", got)
+		}
+		if strings.Contains(got, "()") {
+			t.Errorf("summary %q renders an empty repo_name", got)
+		}
+	})
+
+	t.Run("candidate without service_id is skipped", func(t *testing.T) {
+		t.Parallel()
+
+		got := summarizeToolText("find_code", &ResponseEnvelope{Error: &ErrorEnvelope{
+			Code:    "ambiguous",
+			Message: message,
+			Details: map[string]any{
+				"candidates": []any{
+					map[string]any{"repo_name": "eshu-hq/skipped"},
+					map[string]any{"service_id": "workload:api", "repo_name": "eshu-hq/api"},
+				},
+			},
+		}})
+		if !strings.Contains(got, "workload:api") {
+			t.Errorf("summary %q lacks the present candidate id", got)
+		}
+		// Only ids the envelope carries are listed: the first row has no
+		// service_id, so its repo_name must not be rendered on its own.
+		if strings.Contains(got, "eshu-hq/skipped") {
+			t.Errorf("summary %q rendered a candidate without a service_id", got)
+		}
+	})
+
+	t.Run("clamp cuts the list with a marker", func(t *testing.T) {
+		t.Parallel()
+
+		candidates := make([]any, 0, 50)
+		for i := 0; i < 50; i++ {
+			candidates = append(candidates, map[string]any{
+				"service_id": "workload:" + strings.Repeat("x", 30) + fmt.Sprintf("-%d", i),
+				"repo_name":  "repo-" + strings.Repeat("y", 30) + fmt.Sprintf("-%d", i),
+			})
+		}
+		got := summarizeToolText("find_code", &ResponseEnvelope{Error: &ErrorEnvelope{
+			Code:    "ambiguous",
+			Message: message,
+			Details: map[string]any{"candidates": candidates},
+		}})
+		if len(got) > maxSummaryLength+3 {
+			t.Errorf("summary length %d exceeds the bound: %q", len(got), got)
+		}
+		if !strings.Contains(got, "more") {
+			t.Errorf("summary %q lacks the truncation marker", got)
+		}
+		if strings.Contains(got, "-49") {
+			t.Errorf("summary %q lists a candidate that should have been cut", got)
+		}
+	})
 }
 
 // TestSummarizeTruthPrefixes proves every truth level/freshness combination
