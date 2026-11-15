@@ -175,7 +175,10 @@ func TestRepoFilterFieldDescriptions(t *testing.T) {
 			if !ok {
 				t.Fatalf("Definition(%s) field %s is %T, want map[string]any", name, field, properties[field])
 			}
-			desc, _ := fieldSchema["description"].(string)
+			desc, isString := fieldSchema["description"].(string)
+			if !isString {
+				t.Fatalf("Definition(%s) field %s description is %T, want string", name, field, fieldSchema["description"])
+			}
 			if !containsFold(desc, "every service selector") {
 				t.Errorf("Definition(%s) field %s description lost the every-selector wording: %q", name, field, desc)
 			}
