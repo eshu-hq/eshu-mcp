@@ -301,19 +301,28 @@ moves the full-schema source off the error path. Pinned by
 `TestCallInvalidArgumentsEchoIsCapped` and
 `TestSchemaArgumentNamesCapsAndSorts`.
 
-Closed-world validation (rejecting undeclared `call_tool` keys with an
-`additionalProperties` field error) is HELD per the arbiter ruling on the
-issue until every known working key is declared-or-removed in core schema
-source, with pass-throughs explicitly `additionalProperties: true` and one
-linked audit issue per category. The per-tool route-read audit behind that
-hold (every tool's route reads are schema-declared except
+Closed-world validation (eshu-hq/eshu-mcp#86) now honors an explicit
+`additionalProperties: false`: a key the schema does not declare is rejected
+with an `additionalProperties` field error naming it, so a `call_tool` wrapper
+typo fails validation instead of dispatching into a route refusal. The router
+pair (`find_tool`, `call_tool`) declares `additionalProperties: false`; the
+173 target tools keep the open-world tolerance (undeclared properties ignored)
+until the declare-or-remove follow-ups (#76, #78, #79, #80) land, so a
+misspelled target selector such as `service` for `service_name` still reaches
+the route refusal. The per-tool route-read audit behind the eventual full
+close (every tool's route reads are schema-declared except
 `resolve_entity`'s deprecated `name` alias, the `incident_id` / `run_id`
 fallbacks, the `dead_code` `exclude_decorated_with` filter, the `search_*`
 `query` / `repo_id` / `rank_cursor` selectors, and the three whole-map
 pass-through routes `explain_dependency_path`, `get_file_lines`, and
-`list_runtime_version_declarations`) is recorded on the issue; the router
-validator keeps the source tolerance and ignores undeclared properties
-until that follow-up lands.
+`list_runtime_version_declarations`) is now recorded in
+`docs/route-read-census.md`.
+
+The direct `tools/call` path now validates with the same `ValidateArguments`
+the router applies to a `call_tool` target, so a schema-invalid direct call
+answers the same `mcp_router_invalid_arguments` result naming the field
+instead of reaching the route or core; pinned by
+`TestDirectCallValidatesArguments`.
 
 ## NOT_CHECKED
 

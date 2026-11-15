@@ -260,7 +260,9 @@ func TestToolsCallRoundTrip(t *testing.T) {
 }
 
 // TestToolsCallCoreRefusalPassesThrough proves a core error envelope with a
-// non-2xx status arrives as an error result carrying the same envelope.
+// non-2xx status arrives as an error result carrying the same envelope. The
+// arguments are schema-valid so the direct-path validation
+// (eshu-hq/eshu-mcp#86) admits them and the call reaches core.
 func TestToolsCallCoreRefusalPassesThrough(t *testing.T) {
 	t.Parallel()
 
@@ -272,7 +274,7 @@ func TestToolsCallCoreRefusalPassesThrough(t *testing.T) {
 	defer cleanup()
 
 	_, decoded := postMessage(t, mcp.Handler(nil),
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_file_content","arguments":{"query":"x"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_file_content","arguments":{"pattern":"x"}}}`,
 		"Bearer scoped-key")
 	result := mustMap(t, decoded["result"])
 	if result["isError"] != true {

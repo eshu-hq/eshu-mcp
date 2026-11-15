@@ -286,6 +286,13 @@ func (s *Server) callTool(ctx context.Context, params mcpToolCallParams, authHea
 		return result, nil
 	}
 	if !router.Intercepts(params.Name) {
+		// A direct tools/call is validated exactly as call_tool validates its
+		// target, so a schema-invalid direct call is refused with the same
+		// mcp_router_invalid_arguments result instead of reaching the route
+		// or core (eshu-hq/eshu-mcp#86).
+		if invalid := router.ValidateDirectCall(s.tools, params.Name, params.Arguments); invalid != nil {
+			return *invalid
+		}
 		result, runErr := run(ctx, params.Name, params.Arguments)
 		if runErr != nil {
 			return dispatch.ToolErrorResultForCall(mode, params.Name, runErr, s.logger, dispatch.DefaultOptions().ResponseByteBudget)
