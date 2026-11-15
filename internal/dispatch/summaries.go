@@ -105,19 +105,128 @@ func summarizePlainToolText(toolName string, value any) string {
 
 // summarizeEnvelopeError renders an error envelope as truth, surfacing the
 // machine-readable code alongside the human message so partial/failed responses
-// never collapse into generic success text.
+// never collapse into generic success text. An ambiguous-service error whose
+// details carry candidates appends each candidate's service_id (and repo_name
+// when present) so a text-only client can retry with a specific service_id
+// without reading the structured envelope. Only ids the envelope carries are
+// rendered, so a grant-scoped caller never sees more than the envelope allows.
 func summarizeEnvelopeError(errEnv *ErrorEnvelope) string {
 	message := strings.TrimSpace(errEnv.Message)
 	code := strings.TrimSpace(string(errEnv.Code))
+	var base string
 	switch {
 	case code != "" && message != "":
-		return fmt.Sprintf("error %s: %s", code, message)
+		base = fmt.Sprintf("error %s: %s", code, message)
 	case code != "":
-		return fmt.Sprintf("error %s", code)
+		base = fmt.Sprintf("error %s", code)
 	case message != "":
-		return message
+		base = message
 	default:
-		return "Eshu query returned an error."
+		base = "Eshu query returned an error."
+	}
+	if list := summarizeAmbiguousCandidates(errEnv.Details, maxSummaryLength-len(base)); list != "" {
+		return base + list
+	}
+	return base
+}
+
+// ambiguousCandidatePrefix introduces the candidate list in an ambiguity
+// summary.
+const ambiguousCandidatePrefix = "; candidates: "
+
+// ambiguousCandidateSeparator joins adjacent candidate fragments.
+const ambiguousCandidateSeparator = ", "
+
+// summarizeAmbiguousCandidates renders the details.candidates list for an
+// ambiguous-service error: each candidate's service_id and, when present, its
+// repo_name, in envelope order, cut to the remaining summary budget with a
+// "(+N more)" marker when candidates are omitted. It returns "" when details
+// carry no candidates or no candidate has a service_id.
+func summarizeAmbiguousCandidates(details map[string]any, budget int) string {
+	parts := ambiguousCandidateParts(details)
+	if len(parts) == 0 {
+		return ""
+	}
+	full := ambiguousCandidatePrefix + strings.Join(parts, ambiguousCandidateSeparator)
+	if len(full) <= budget {
+		return full
+	}
+	if budget <= len(ambiguousCandidatePrefix) {
+		return ""
+	}
+
+	chosen := make([]string, 0, len(parts))
+	used := len(ambiguousCandidatePrefix)
+	for _, part := range parts {
+		cost := len(part)
+		if len(chosen) > 0 {
+			cost += len(ambiguousCandidateSeparator)
+		}
+		// Reserve room for the omission marker unless this is the final part,
+		// so the marker itself never pushes the summary past the budget.
+		if omitted := len(parts) - len(chosen) - 1; omitted > 0 && used+cost+len(ambiguityOmittedMarker(omitted)) > budget {
+			break
+		}
+		if used+cost > budget {
+			break
+		}
+		chosen = append(chosen, part)
+		used += cost
+	}
+	if len(chosen) == 0 {
+		return ""
+	}
+	list := strings.Join(chosen, ambiguousCandidateSeparator)
+	if omitted := len(parts) - len(chosen); omitted > 0 {
+		list += ambiguityOmittedMarker(omitted)
+	}
+	return ambiguousCandidatePrefix + list
+}
+
+// ambiguityOmittedMarker renders the count of candidates the summary omitted
+// and points text-only clients at the canonical full list.
+func ambiguityOmittedMarker(omitted int) string {
+	return fmt.Sprintf(" (+%d more; full list in structuredContent)", omitted)
+}
+
+// ambiguousCandidateParts renders each candidate's service_id (and repo_name
+// when present) as a compact fragment, skipping rows that carry no service_id.
+func ambiguousCandidateParts(details map[string]any) []string {
+	rows := ambiguousCandidateRows(details)
+	parts := make([]string, 0, len(rows))
+	for _, row := range rows {
+		id := strings.TrimSpace(stringVal(row, "service_id"))
+		if id == "" {
+			continue
+		}
+		part := id
+		if repo := strings.TrimSpace(stringVal(row, "repo_name")); repo != "" {
+			part += " (" + repo + ")"
+		}
+		parts = append(parts, part)
+	}
+	return parts
+}
+
+// ambiguousCandidateRows extracts the details.candidates slice, tolerating both
+// the []map[string]any and []any shapes a JSON-decoded envelope can carry.
+func ambiguousCandidateRows(details map[string]any) []map[string]any {
+	if details == nil {
+		return nil
+	}
+	switch typed := details["candidates"].(type) {
+	case []map[string]any:
+		return typed
+	case []any:
+		rows := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			if row, ok := item.(map[string]any); ok {
+				rows = append(rows, row)
+			}
+		}
+		return rows
+	default:
+		return nil
 	}
 }
 

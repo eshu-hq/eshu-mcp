@@ -261,6 +261,60 @@ schema validation produces.
   `TestResolveRouteRefusesMissingSelector`, and the envelope by the
   `call_tool` tests in `internal/router/call_invalid_arguments_test.go`.
 
+### Missing-selector structured refusal (eshu-hq/eshu-mcp#73, slice 1)
+
+Deliberate divergence from the plain-text rendering above. Six tools whose
+schemas deliberately stay open (the `get_repo_summary` repo_id/repo_name
+pair and the service selector groups) pass the schema gate and previously
+fell through to the plain-text route refusal. Those refusals now carry
+`routecontract.MissingSelectorError` (tool plus selector fields in route
+precedence order) and render the canonical
+`mcp_router_invalid_arguments` envelope with `details.tool` and
+`details.fields`, on both the direct `tools/call` and routed `call_tool`
+paths, which share `ToolErrorResultForCall`. Refusal texts are
+byte-identical, so `TestResolveRouteRefusesMissingSelector` still holds;
+the envelope is pinned by `TestRouteRefusalRendersInvalidArguments` and
+`TestCallSelectorRefusalIsInvalidArguments`.
+
+### Typed single-selector refusals (eshu-hq/eshu-mcp#73, slice 2)
+
+The remaining single-selector route refusals — the explicit checks in
+`routes_status.go` and `routes_repository_files.go`, and the named-missing
+arm of the shared empty-path-segment guard — carry
+`routecontract.MissingSelectorError` with byte-identical texts, so both
+`tools/call` paths render the structured envelope; pinned by the extended
+`selectorRefusalCases` table and `TestDirectSelectorRefusalIsInvalidArguments`.
+The empty-list fallback arm and the relationships format errors stay plain
+text: with no missing schema-required argument there is no field list to name.
+
+### Capped invalid-arguments echo (eshu-hq/eshu-mcp#73, slice 3)
+
+The `mcp_router_invalid_arguments` envelope a schema-invalid `call_tool`
+answers no longer echoes the full `input_schema` and curated `example` —
+up to several kilobytes for the supply-chain impact tools, as the issue
+measured. The details now carry the failing `field_errors` plus
+`argument_names` (the schema's declared argument names, alphabetical and
+capped at 50) and a `schema_hint` that points the caller at `find_tool`
+for the full schema and example. `find_tool` already returns each
+candidate's `inputSchema` and `example`, so nothing is lost: the echo only
+moves the full-schema source off the error path. Pinned by
+`TestCallInvalidArgumentsEchoIsCapped` and
+`TestSchemaArgumentNamesCapsAndSorts`.
+
+Closed-world validation (rejecting undeclared `call_tool` keys with an
+`additionalProperties` field error) is HELD per the arbiter ruling on the
+issue until every known working key is declared-or-removed in core schema
+source, with pass-throughs explicitly `additionalProperties: true` and one
+linked audit issue per category. The per-tool route-read audit behind that
+hold (every tool's route reads are schema-declared except
+`resolve_entity`'s deprecated `name` alias, the `incident_id` / `run_id`
+fallbacks, the `dead_code` `exclude_decorated_with` filter, the `search_*`
+`query` / `repo_id` / `rank_cursor` selectors, and the three whole-map
+pass-through routes `explain_dependency_path`, `get_file_lines`, and
+`list_runtime_version_declarations`) is recorded on the issue; the router
+validator keeps the source tolerance and ignores undeclared properties
+until that follow-up lands.
+
 ## NOT_CHECKED
 
 Live MCP calls against deployed artifacts, QA EKS proof, concurrent

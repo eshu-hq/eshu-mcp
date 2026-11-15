@@ -13,7 +13,14 @@ import (
 	"time"
 
 	"github.com/eshu-hq/eshu-mcp/internal/resultshape"
+	"github.com/eshu-hq/eshu-mcp/internal/routecontract"
 )
+
+// invalidArgumentsCode is the canonical machine-readable code for a call
+// that names no usable selector for its route. It matches the router's
+// call_tool refusal so a direct tools/call and a routed call_tool report
+// the same code.
+const invalidArgumentsCode = "mcp_router_invalid_arguments"
 
 // defaultToolDispatchTimeout bounds every tool dispatch. It matches the
 // source census pin: TestToolRegistryCensusDispatchBounds fails the source
@@ -95,10 +102,12 @@ func deadlinePartialResult(status int, body []byte, toolName string, mode result
 }
 
 // dispatchErrorStructuredContent renders a dispatch context error as the
-// canonical {data, truth, error} timeout/cancelled envelope, and an
-// unknown-tool refusal as the canonical mcp_router_unknown_tool envelope
-// with the closest registered names. Anything else reports false and keeps
-// the caller's rendering.
+// canonical {data, truth, error} timeout/cancelled envelope, an unknown-tool
+// refusal as the canonical mcp_router_unknown_tool envelope with the
+// closest registered names, and a missing-selector refusal as the canonical
+// mcp_router_invalid_arguments envelope with the selector fields that would
+// satisfy the route. Anything else reports false and keeps the caller's
+// rendering.
 func dispatchErrorStructuredContent(err error) (map[string]any, bool) {
 	var unknownErr *UnknownToolError
 	if errors.As(err, &unknownErr) {
@@ -116,6 +125,26 @@ func dispatchErrorStructuredContent(err error) (map[string]any, bool) {
 				"details": map[string]any{
 					"tool":        unknownErr.Tool,
 					"suggestions": suggestions,
+				},
+			},
+		}, true
+	}
+	var selectorErr *routecontract.MissingSelectorError
+	if errors.As(err, &selectorErr) {
+		fields := selectorErr.Fields
+		if fields == nil {
+			fields = []string{}
+		}
+		return map[string]any{
+			"data":  nil,
+			"truth": nil,
+			"error": map[string]any{
+				"code":       invalidArgumentsCode,
+				"message":    selectorErr.Message,
+				"capability": "mcp.router",
+				"details": map[string]any{
+					"tool":   selectorErr.Tool,
+					"fields": fields,
 				},
 			},
 		}, true
