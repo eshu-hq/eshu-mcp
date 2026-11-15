@@ -1,0 +1,91 @@
+# CI gate registry for eshu-mcp — the single source of truth for the required
+# status contexts that core's scripts/dev/pre-enqueue-check.sh resolves when
+# run with PRE_ENQUEUE_REPO=eshu-hq/eshu-mcp (eshu-hq/eshu-mcp#87).
+# Version: v1.
+#
+# The live ruleset require-ci-complete-on-main requires exactly one context:
+# `ci-complete`, the ci.yml alias job that aggregates the `changes` paths
+# filter and the reusable `go-ci` call and mirrors the upstream
+# `go-ci / ci-complete` aggregator. Every other row names a check run the
+# workflows emit but the ruleset does not require (ruleset_required: false):
+# a completed-red one needs a --dispositioned rather than failing the merge
+# rule outright. Names are copied verbatim from `gh pr checks` output; the
+# `go-ci / <lane>` rows report through the ci.yml `go-ci` reusable call job.
+#
+# This satellite has no path-selected local gate registry: its lane bodies
+# live in the shared go-collector-ci reusable workflow (eshu-hq/.github), so
+# the `gates:` list is empty and there is no trusted aggregate publisher
+# (aggregates_blocking_gates stays false on every row). Non-PR jobs
+# (gosec-sarif, scheduled-findings, tag-patch, release) read "skipping" on a
+# PR; only gosec-sarif is listed because it is the one the issue names and it
+# is harmless at ruleset_required: false.
+version: v1
+
+gates: []
+
+required_status_checks:
+  - context: ci-complete
+    workflow: ci.yml
+    job: ci-complete
+    integration_id: 15368
+    aggregates_blocking_gates: false
+  - context: changes
+    workflow: ci.yml
+    job: changes
+    integration_id: 15368
+    ruleset_required: false
+  - context: go-ci / actionlint
+    workflow: ci.yml
+    job: go-ci
+    integration_id: 15368
+    ruleset_required: false
+  - context: go-ci / ci-complete
+    workflow: ci.yml
+    job: go-ci
+    integration_id: 15368
+    ruleset_required: false
+  - context: go-ci / govulncheck
+    workflow: ci.yml
+    job: go-ci
+    integration_id: 15368
+    ruleset_required: false
+  - context: go-ci / gosec
+    workflow: ci.yml
+    job: go-ci
+    integration_id: 15368
+    ruleset_required: false
+  - context: go-ci / image
+    workflow: ci.yml
+    job: go-ci
+    integration_id: 15368
+    ruleset_required: false
+  - context: go-ci / lint
+    workflow: ci.yml
+    job: go-ci
+    integration_id: 15368
+    ruleset_required: false
+  - context: go-ci / race
+    workflow: ci.yml
+    job: go-ci
+    integration_id: 15368
+    ruleset_required: false
+  - context: go-ci / shell
+    workflow: ci.yml
+    job: go-ci
+    integration_id: 15368
+    ruleset_required: false
+  - context: go-ci / test
+    workflow: ci.yml
+    job: go-ci
+    integration_id: 15368
+    ruleset_required: false
+  - context: gosec-sarif
+    workflow: ci.yml
+    job: gosec-sarif
+    integration_id: 15368
+    ruleset_required: false
+  - context: parity
+    workflow: contract-parity.yml
+    job: parity
+    integration_id: 15368
+    ruleset_required: false
