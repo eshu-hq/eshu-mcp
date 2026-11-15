@@ -244,6 +244,20 @@ arm of the shared empty-path-segment guard — carry
 The empty-list fallback arm and the relationships format errors stay plain
 text: with no missing schema-required argument there is no field list to name.
 
+### Capped invalid-arguments echo (eshu-hq/eshu-mcp#73, slice 3)
+
+The `mcp_router_invalid_arguments` envelope a schema-invalid `call_tool`
+answers no longer echoes the full `input_schema` and curated `example` —
+up to several kilobytes for the supply-chain impact tools, as the issue
+measured. The details now carry the failing `field_errors` plus
+`argument_names` (the schema's declared argument names, alphabetical and
+capped at 50) and a `schema_hint` that points the caller at `find_tool`
+for the full schema and example. `find_tool` already returns each
+candidate's `inputSchema` and `example`, so nothing is lost: the echo only
+moves the full-schema source off the error path. Pinned by
+`TestCallInvalidArgumentsEchoIsCapped` and
+`TestSchemaArgumentNamesCapsAndSorts`.
+
 Closed-world validation (rejecting undeclared `call_tool` keys with an
 `additionalProperties` field error) is HELD per the arbiter ruling on the
 issue until every known working key is declared-or-removed in core schema
