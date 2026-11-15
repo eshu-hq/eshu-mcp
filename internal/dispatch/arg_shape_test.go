@@ -59,6 +59,34 @@ func TestResolveRouteRefusesMissingSelector(t *testing.T) {
 	}
 }
 
+// TestResolveRouteRefusesConflictingRepositorySelectors proves the repo
+// filter aliases refuse conflicting values (eshu-hq/eshu-mcp#75) and accept
+// identical ones, at the dispatch level where the refusal surfaces.
+func TestResolveRouteRefusesConflictingRepositorySelectors(t *testing.T) {
+	t.Parallel()
+
+	_, err := ResolveRoute("get_service_story", map[string]any{
+		"service_id":    "service:pay",
+		"repo":          "r1",
+		"repository_id": "r2",
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflicting repository selectors repo and repository_id") {
+		t.Errorf("ResolveRoute(conflicting repo aliases) error = %v, want the conflict refusal", err)
+	}
+
+	route, err := ResolveRoute("get_service_story", map[string]any{
+		"service_id": "service:pay",
+		"repo":       "r1",
+		"repo_id":    "r1",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute(identical repo aliases) error = %v, want nil", err)
+	}
+	if route.Query["repo"] != "r1" {
+		t.Fatalf("ResolveRoute(identical repo aliases) query = %v, want repo=r1", route.Query)
+	}
+}
+
 // TestResolveCallChainRequiresTarget proves the conditional selector: a
 // call_chain analysis without a start->end target or start/end entity ids
 // is refused with the format error instead of reaching the handler with

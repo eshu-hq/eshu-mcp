@@ -2685,7 +2685,7 @@
       "name": "analyze_infra_relationships"
     },
     {
-      "description": "Get a lightweight identity and coverage summary for a repository: file count, languages, entity count, entity types, and indexing coverage state. Use this for a quick overview before calling get_repo_context, which returns the full enriched context including entry points, infrastructure, relationships, API surface, and deployment evidence. Provide exactly one of repo_id (preferred) or repo_name; the call is rejected if neither is set.",
+      "description": "Get a lightweight identity and coverage summary for a repository: file count, languages, entity count, entity types, and indexing coverage state. Use this for a quick overview before calling get_repo_context, which returns the full enriched context including entry points, infrastructure, relationships, API surface, and deployment evidence. Provide exactly one of repo_id (preferred) or repo_name; the call is rejected if neither is set. Choose by need: get_repo_summary for counts and languages, get_repo_context for relationships, consumers, and API surface, or get_repo_story for a narrative with sections and drilldowns.",
       "inputSchema": {
         "properties": {
           "repo_id": {
@@ -2702,7 +2702,7 @@
       "name": "get_repo_summary"
     },
     {
-      "description": "Get complete context for a repository in a single call. Accepts a repository selector such as canonical ID, name, repo slug, or indexed path.",
+      "description": "Get complete context for a repository in a single call. Accepts a repository selector such as canonical ID, name, repo slug, or indexed path. Choose by need: get_repo_summary for counts and languages, get_repo_context for relationships, consumers, and API surface, or get_repo_story for a narrative with sections and drilldowns.",
       "inputSchema": {
         "properties": {
           "evidence_detail": {
@@ -3041,7 +3041,7 @@
       "name": "list_package_registry_versions"
     },
     {
-      "description": "Get a structured story for a repository. Accepts a repository selector such as canonical ID, name, repo slug, or indexed path.",
+      "description": "Get a structured story for a repository. Accepts a repository selector such as canonical ID, name, repo slug, or indexed path. Choose by need: get_repo_summary for counts and languages, get_repo_context for relationships, consumers, and API surface, or get_repo_story for a narrative with sections and drilldowns.",
       "inputSchema": {
         "properties": {
           "evidence_detail": {
@@ -5830,7 +5830,7 @@
       "name": "get_service_context"
     },
     {
-      "description": "Get the one-call service dossier for a service: identity, API surface, deployment lanes, dependencies, consumers, and evidence graph. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories, so two same-named services in one repository stay ambiguous. When the answer is ambiguous, call again with service_id set to a candidate's next_selector value; a candidate with legacy_id true is a leftover, not the live workload; choose a scoped candidate.",
+      "description": "Get the one-call service dossier for a service: identity, API surface, deployment lanes, dependencies, consumers, and evidence graph. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories, so two same-named services in one repository stay ambiguous. When the answer is ambiguous, call again with service_id set to a candidate's next_selector value; a candidate with legacy_id true is a leftover, not the live workload; choose a scoped candidate. The repository filter repo, repository_id, or repo_id applies with every service selector (service_id, workload_id, or service_name); give at most one, and conflicting values are rejected. Choose by need: get_repo_summary for counts and languages, get_repo_context for relationships, consumers, and API surface, or get_repo_story for a narrative with sections and drilldowns.",
       "inputSchema": {
         "properties": {
           "downstream_read_limit": {
@@ -5850,15 +5850,15 @@
             "type": "string"
           },
           "repo": {
-            "description": "Optional repository selector used with service_name. It separates only services in different repositories, not two services in the same repository; use service_id for those",
+            "description": "Optional repository selector that applies with every service selector (service_id, workload_id, or service_name). It separates only services in different repositories. Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "repo_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "repository_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "service_id": {
@@ -5879,7 +5879,7 @@
       "name": "get_service_story"
     },
     {
-      "description": "Page a service's API surface endpoints in path, endpoint_id order. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. Returns the endpoints page with endpoint_count (the true total), detail_truncated, and next_offset (absent when the page is complete); repeat with offset set to next_offset until it is absent. The story and context dossiers keep only a 50-row api_surface preview and point here.",
+      "description": "Page a service's API surface endpoints in path, endpoint_id order. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. Returns the endpoints page with endpoint_count (the true total), detail_truncated, and next_offset (absent when the page is complete); repeat with offset set to next_offset until it is absent. The story and context dossiers keep only a 50-row api_surface preview and point here. The repository filter repo, repository_id, or repo_id applies with every service selector (service_id, workload_id, or service_name); give at most one, and conflicting values are rejected. Choose by need: get_repo_summary for counts and languages, get_repo_context for relationships, consumers, and API surface, or get_repo_story for a narrative with sections and drilldowns.",
       "inputSchema": {
         "properties": {
           "environment": {
@@ -5899,15 +5899,15 @@
             "type": "integer"
           },
           "repo": {
-            "description": "Optional repository selector used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Optional repository selector that applies with every service selector (service_id, workload_id, or service_name). It separates only services in different repositories. Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "repo_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "repository_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "service_id": {
@@ -5928,7 +5928,7 @@
       "name": "list_service_api_endpoints"
     },
     {
-      "description": "Page a service's downstream consumer repositories in (repository, repo_id) order. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. Returns the page with truncated, next_cursor (absent when the page is terminal), consumer_truncation_sources naming which read bound fired, searched_hostnames, and effective_read_bound. Repeat with after_repository/after_repo_id set to the previous page's next_cursor until next_cursor is absent. Counts are lower bounds, never totals.",
+      "description": "Page a service's downstream consumer repositories in (repository, repo_id) order. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. Returns the page with truncated, next_cursor (absent when the page is terminal), consumer_truncation_sources naming which read bound fired, searched_hostnames, and effective_read_bound. Repeat with after_repository/after_repo_id set to the previous page's next_cursor until next_cursor is absent. Counts are lower bounds, never totals. The repository filter repo, repository_id, or repo_id applies with every service selector (service_id, workload_id, or service_name); give at most one, and conflicting values are rejected. Choose by need: get_repo_summary for counts and languages, get_repo_context for relationships, consumers, and API surface, or get_repo_story for a narrative with sections and drilldowns.",
       "inputSchema": {
         "properties": {
           "after_repo_id": {
@@ -5950,15 +5950,15 @@
             "type": "integer"
           },
           "repo": {
-            "description": "Optional repository selector used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Optional repository selector that applies with every service selector (service_id, workload_id, or service_name). It separates only services in different repositories. Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "repo_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "repository_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "service_id": {
@@ -5979,7 +5979,7 @@
       "name": "list_service_downstream_consumers"
     },
     {
-      "description": "Plan a service investigation across related repositories, deployment sources, indexed docs, and evidence drilldowns. Select the service with service_id or service_name; service_id wins. repo separates only services that live in different repositories. When the answer is ambiguous, call again with service_id set to a candidate's next_selector value; a candidate with legacy_id true is a leftover, not the live workload; choose a scoped candidate.",
+      "description": "Plan a service investigation across related repositories, deployment sources, indexed docs, and evidence drilldowns. Select the service with service_id or service_name; service_id wins. repo separates only services that live in different repositories. When the answer is ambiguous, call again with service_id set to a candidate's next_selector value; a candidate with legacy_id true is a leftover, not the live workload; choose a scoped candidate. The repository filter repo, repository_id, or repo_id applies with every service selector (service_id, workload_id, or service_name); give at most one, and conflicting values are rejected. Choose by need: get_repo_summary for counts and languages, get_repo_context for relationships, consumers, and API surface, or get_repo_story for a narrative with sections and drilldowns.",
       "inputSchema": {
         "properties": {
           "environment": {
@@ -5995,15 +5995,15 @@
             "type": "string"
           },
           "repo": {
-            "description": "Optional repository selector used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Optional repository selector that applies with every service selector (service_id, workload_id, or service_name). It separates only services in different repositories. Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "repo_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "repository_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "service_id": {
@@ -6020,7 +6020,7 @@
       "name": "investigate_service"
     },
     {
-      "description": "Compose the one-call service intelligence report for a service: identity, code-to-runtime trace, deployment/config influence, supply-chain, and incidents, each with preserved truth labels, evidence handles, limitations, and bounded next calls, plus deterministic suggested investigations. Returns schema service_intelligence_report.v1. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. When the answer is ambiguous, call again with service_id set to a candidate's next_selector value; a candidate with legacy_id true is a leftover, not the live workload; choose a scoped candidate.",
+      "description": "Compose the one-call service intelligence report for a service: identity, code-to-runtime trace, deployment/config influence, supply-chain, and incidents, each with preserved truth labels, evidence handles, limitations, and bounded next calls, plus deterministic suggested investigations. Returns schema service_intelligence_report.v1. Select the service with one of service_id, workload_id, or service_name; the first one given wins in that order. repo separates only services that live in different repositories. When the answer is ambiguous, call again with service_id set to a candidate's next_selector value; a candidate with legacy_id true is a leftover, not the live workload; choose a scoped candidate. The repository filter repo, repository_id, or repo_id applies with every service selector (service_id, workload_id, or service_name); give at most one, and conflicting values are rejected. Choose by need: get_repo_summary for counts and languages, get_repo_context for relationships, consumers, and API surface, or get_repo_story for a narrative with sections and drilldowns.",
       "inputSchema": {
         "properties": {
           "environment": {
@@ -6028,15 +6028,15 @@
             "type": "string"
           },
           "repo": {
-            "description": "Optional repository selector used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Optional repository selector that applies with every service selector (service_id, workload_id, or service_name). It separates only services in different repositories. Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "repo_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "repository_id": {
-            "description": "Optional repository selector alias used with service_name. It separates only services in different repositories; use service_id for the rest",
+            "description": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
             "type": "string"
           },
           "service_id": {

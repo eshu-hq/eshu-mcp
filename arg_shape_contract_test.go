@@ -91,6 +91,101 @@ func TestDeliberateSelectorContractText(t *testing.T) {
 	}
 }
 
+// Selector precedence and decision-table contract (eshu-hq/eshu-mcp#75):
+// where a caller picks between the three repo tools or between selector
+// aliases, the tool description carries the decision table and the
+// precedence. This table pins the required sentences for every such tool; a
+// reworded description must keep them.
+func TestSelectorPrecedenceContractText(t *testing.T) {
+	t.Parallel()
+
+	defs := map[string]ToolDefinition{}
+	for _, tool := range Definitions() {
+		defs[tool.Name] = tool
+	}
+
+	// Decision table: each repo tool names what it returns, and every
+	// service-family tool points at the same table.
+	decision := map[string]string{
+		"get_repo_summary":                  "counts and languages",
+		"get_repo_context":                  "relationships, consumers, and API surface",
+		"get_repo_story":                    "narrative with sections and drilldowns",
+		"get_service_story":                 "counts and languages",
+		"get_service_intelligence_report":   "counts and languages",
+		"list_service_api_endpoints":        "counts and languages",
+		"list_service_downstream_consumers": "counts and languages",
+		"investigate_service":               "counts and languages",
+	}
+	for name, want := range decision {
+		definition, ok := defs[name]
+		if !ok {
+			t.Errorf("Definition(%s) missing", name)
+			continue
+		}
+		if !containsFold(definition.Description, want) {
+			t.Errorf("Description(%s) lost its decision-table phrase %q", name, want)
+		}
+	}
+
+	// Repo filter: the service-family descriptions state the repo alias
+	// filter applies to every selector and rejects conflicting values.
+	for _, name := range []string{
+		"get_service_story",
+		"get_service_intelligence_report",
+		"list_service_api_endpoints",
+		"list_service_downstream_consumers",
+		"investigate_service",
+	} {
+		definition := defs[name]
+		for _, want := range []string{"applies with every service selector", "conflicting values are rejected"} {
+			if !containsFold(definition.Description, want) {
+				t.Errorf("Description(%s) lost the repo-filter sentence %q", name, want)
+			}
+		}
+	}
+}
+
+// TestRepoFilterFieldDescriptions proves the repo/repository_id/repo_id
+// field descriptions apply to every service selector, not only service_name,
+// and state the conflict rejection (eshu-hq/eshu-mcp#75).
+func TestRepoFilterFieldDescriptions(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		"get_service_story",
+		"get_service_intelligence_report",
+		"list_service_api_endpoints",
+		"list_service_downstream_consumers",
+		"investigate_service",
+	} {
+		definition, ok := Definition(name)
+		if !ok {
+			t.Fatalf("Definition(%s) missing", name)
+		}
+		schema, ok := definition.InputSchema.(map[string]any)
+		if !ok {
+			t.Fatalf("Definition(%s) schema is %T, want map[string]any", name, definition.InputSchema)
+		}
+		properties, ok := schema["properties"].(map[string]any)
+		if !ok {
+			t.Fatalf("Definition(%s) properties is %T, want map[string]any", name, schema["properties"])
+		}
+		for _, field := range []string{"repo", "repository_id", "repo_id"} {
+			fieldSchema, ok := properties[field].(map[string]any)
+			if !ok {
+				t.Fatalf("Definition(%s) field %s is %T, want map[string]any", name, field, properties[field])
+			}
+			desc, _ := fieldSchema["description"].(string)
+			if !containsFold(desc, "every service selector") {
+				t.Errorf("Definition(%s) field %s description lost the every-selector wording: %q", name, field, desc)
+			}
+			if containsFold(desc, "used with service_name") {
+				t.Errorf("Definition(%s) field %s description still says used with service_name: %q", name, field, desc)
+			}
+		}
+	}
+}
+
 // containsFold reports whether text contains want, ignoring ASCII case, so
 // a capitalization-only rewording does not fail the contract pin.
 func containsFold(text, want string) bool {

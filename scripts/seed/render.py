@@ -210,6 +210,50 @@ EDGE_CONTRACT_EXAMPLES = {
     },
 }
 
+# eshu-hq/eshu-mcp#75: selector precedence and the repo/service decision
+# table. The source tool and field descriptions predate the selector
+# documentation, so the renderer re-applies this text below. Sentences append
+# only when absent (a source that later adopts one is never doubled); the
+# repo-filter field descriptions are replaced wholesale because the source
+# says "used with service_name", which is wrong for a filter applied to every
+# service selector.
+DECISION_TABLE_SENTENCE = (
+    "Choose by need: get_repo_summary for counts and languages, "
+    "get_repo_context for relationships, consumers, and API surface, or "
+    "get_repo_story for a narrative with sections and drilldowns."
+)
+
+REPO_FILTER_SENTENCE = (
+    "The repository filter repo, repository_id, or repo_id applies with "
+    "every service selector (service_id, workload_id, or service_name); "
+    "give at most one, and conflicting values are rejected."
+)
+
+SELECTOR_CONTRACT_SENTENCES = {
+    "get_repo_summary": [DECISION_TABLE_SENTENCE],
+    "get_repo_context": [DECISION_TABLE_SENTENCE],
+    "get_repo_story": [DECISION_TABLE_SENTENCE],
+    "get_service_story": [REPO_FILTER_SENTENCE, DECISION_TABLE_SENTENCE],
+    "get_service_intelligence_report": [REPO_FILTER_SENTENCE, DECISION_TABLE_SENTENCE],
+    "list_service_api_endpoints": [REPO_FILTER_SENTENCE, DECISION_TABLE_SENTENCE],
+    "list_service_downstream_consumers": [REPO_FILTER_SENTENCE, DECISION_TABLE_SENTENCE],
+    "investigate_service": [REPO_FILTER_SENTENCE, DECISION_TABLE_SENTENCE],
+}
+
+SELECTOR_FIELD_DESCRIPTIONS = {
+    "repo": "Optional repository selector that applies with every service selector (service_id, workload_id, or service_name). It separates only services in different repositories. Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
+    "repository_id": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
+    "repo_id": "Alias for repo. Applies with every service selector (service_id, workload_id, or service_name). Give at most one of repo, repository_id, or repo_id; conflicting values are rejected.",
+}
+
+SELECTOR_FIELD_TOOLS = [
+    "get_service_story",
+    "get_service_intelligence_report",
+    "list_service_api_endpoints",
+    "list_service_downstream_consumers",
+    "investigate_service",
+]
+
 
 def apply_edge_contract(definitions):
     """Re-apply the eshu-hq/eshu-mcp#61 edge contract onto verbatim facts.
@@ -239,6 +283,34 @@ def apply_edge_contract(definitions):
             if key not in example:
                 example[key] = value
                 applied.append((name, "example", key))
+    return applied
+
+
+def apply_selector_contract(definitions):
+    """Re-apply the eshu-hq/eshu-mcp#75 selector contract onto verbatim facts.
+
+    Returns the list of (tool, kind, detail) applications made. Sentences
+    append only when absent (so a future source that adopts one is never
+    doubled); the repo-filter field descriptions are replaced wholesale.
+    """
+    applied = []
+    by_name = {tool["name"]: tool for tool in definitions["registry_tools"]}
+    for name, sentences in SELECTOR_CONTRACT_SENTENCES.items():
+        tool = by_name[name]
+        for sentence in sentences:
+            if sentence not in tool["description"]:
+                tool["description"] = tool["description"].rstrip() + " " + sentence
+                applied.append((name, "description", sentence[:60]))
+    for name in SELECTOR_FIELD_TOOLS:
+        tool = by_name[name]
+        properties = tool["inputSchema"].setdefault("properties", {})
+        for field, description in SELECTOR_FIELD_DESCRIPTIONS.items():
+            if field not in properties:
+                applied.append((name, "field-missing", field))
+                continue
+            if properties[field].get("description") != description:
+                properties[field]["description"] = description
+                applied.append((name, "field", field))
     return applied
 
 
@@ -333,6 +405,7 @@ def main():
         },
     }
     applied = apply_edge_contract(definitions)
+    selector_applied = apply_selector_contract(definitions)
     dump(
         f"{args.root}/contracts/tool-registry/v1/tool_definitions.json",
         sort_deep(definitions),
@@ -357,6 +430,7 @@ def main():
     print(f"production hidden: {sorted(facts['production_hidden'])}")
     print(f"router catalog rows: {len(definitions['router_catalog'])}")
     print(f"edge contract applications: {len(applied)}")
+    print(f"selector contract applications: {len(selector_applied)}")
 
 
 if __name__ == "__main__":
