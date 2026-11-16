@@ -1,8 +1,8 @@
 package dispatch
 
 import (
-	"fmt"
 	"net/url"
+	"strings"
 
 	runtimedeclarationtools "github.com/eshu-hq/eshu-mcp/internal/dispatch/runtime/declaration"
 	"github.com/eshu-hq/eshu-mcp/internal/routecontract"
@@ -20,13 +20,18 @@ import (
 // validation no longer forces a selector, this helper enforces the
 // "at least one present" invariant and returns a clear error when both are
 // absent instead of building a malformed empty-selector path.
-func repositorySummarySelector(args map[string]any) (string, error) {
+func repositorySummarySelector(toolName string, args map[string]any) (string, error) {
+	fields := []string{"repo_id", "repo_name"}
 	selector := str(args, "repo_id")
 	if selector == "" {
 		selector = str(args, "repo_name")
 	}
 	if selector == "" {
-		return "", fmt.Errorf("repo_id or repo_name is required")
+		return "", &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  fields,
+			Message: "repo_id or repo_name is required",
+		}
 	}
 	return selector, nil
 }
@@ -81,7 +86,20 @@ func repositoryRoute(toolName string, args map[string]any) (*routecontract.Reque
 	}
 	switch toolName {
 	case "list_indexed_repositories":
-		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories", Query: paginationQuery(args, 100)}, true, nil
+		query := paginationQuery(args, 100)
+		// The name filter composes with the grant on the handler; an empty
+		// or whitespace-only value means absent and is not forwarded.
+		if name := strings.TrimSpace(str(args, "name")); name != "" {
+			query["name"] = name
+		}
+		// Compact is the MCP default when the argument is absent; an
+		// explicit value wins, and the handler rejects an unknown one.
+		projection := str(args, "projection")
+		if projection == "" {
+			projection = "compact"
+		}
+		query["projection"] = projection
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories", Query: query}, true, nil
 	case "count_repositories_by_language":
 		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/by-language", Query: map[string]string{
 			"language": str(args, "language"),
@@ -103,15 +121,29 @@ func repositoryRoute(toolName string, args map[string]any) (*routecontract.Reque
 		}
 		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(repoID) + "/stats"}, true, nil
 	case "get_repo_context":
-		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(str(args, "repo_id")) + "/context"}, true, nil
+		q := map[string]string{"evidence_detail": "handles"}
+		// #10654: handles keeps a populated repo context inside the response
+		// budget; an explicit value wins, and the handler rejects an unknown
+		// one.
+		if detail := str(args, "evidence_detail"); detail != "" {
+			q["evidence_detail"] = detail
+		}
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(str(args, "repo_id")) + "/context", Query: q}, true, nil
 	case "get_relationship_evidence":
 		return &routecontract.Request{Method: "GET", Path: "/api/v0/evidence/relationships/" + url.PathEscape(str(args, "resolved_id"))}, true, nil
 	case "list_service_catalog_correlations":
 		return serviceCatalogCorrelationsRoute(args), true, nil
 	case "get_repo_story":
-		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(str(args, "repo_id")) + "/story"}, true, nil
+		q := map[string]string{"evidence_detail": "handles"}
+		// #10605: handles keeps a populated repo story inside the response
+		// budget; an explicit value wins, and the handler rejects an unknown
+		// one.
+		if detail := str(args, "evidence_detail"); detail != "" {
+			q["evidence_detail"] = detail
+		}
+		return &routecontract.Request{Method: "GET", Path: "/api/v0/repositories/" + url.PathEscape(str(args, "repo_id")) + "/story", Query: q}, true, nil
 	case "get_repo_summary":
-		selector, err := repositorySummarySelector(args)
+		selector, err := repositorySummarySelector(toolName, args)
 		if err != nil {
 			return nil, true, err
 		}

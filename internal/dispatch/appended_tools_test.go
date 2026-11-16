@@ -152,3 +152,63 @@ func TestServicePagingDispatchToCore(t *testing.T) {
 		}
 	})
 }
+
+// TestConsumerListDispatchToCore proves the eshu#10535 appendix tool reaches
+// core over its versioned read-contract route:
+// list_service_downstream_consumers as a GET on
+// /api/v0/services/{selector}/downstream-consumers with story selector
+// parity and opt-in keyset paging. Before the port the new name stops at
+// ResolveRoute with the historic unknown-tool refusal, the same failure the
+// corpus gate reports.
+func TestConsumerListDispatchToCore(t *testing.T) {
+	t.Parallel()
+
+	t.Run("consumers_page", func(t *testing.T) {
+		t.Parallel()
+
+		stub := &stubCore{status: 200, body: `{"data":{"consumers":[]},"truth":null,"error":null}`}
+		result, err := dispatchAgainstStub(t, stub, "list_service_downstream_consumers",
+			map[string]any{
+				"service_name":     "payments",
+				"repo":             "r1",
+				"environment":      "prod",
+				"limit":            25,
+				"after_repository": "webapp",
+				"after_repo_id":    "repository:webapp",
+			}, "Bearer [REDACTED]", DefaultOptions())
+		if err != nil {
+			t.Fatalf("Dispatch() error = %v, want nil", err)
+		}
+		if result.IsError {
+			t.Error("Dispatch() IsError = true, want false for a 200 envelope")
+		}
+		if stub.seenMethod != "GET" {
+			t.Errorf("method = %q, want GET", stub.seenMethod)
+		}
+		if stub.seenPath != "/api/v0/services/payments/downstream-consumers" {
+			t.Errorf("path = %q, want the service downstream-consumers route", stub.seenPath)
+		}
+		wantQuery := "after_repo_id=repository%3Awebapp&after_repository=webapp&environment=prod&limit=25&repo=r1"
+		if stub.seenQuery != wantQuery {
+			t.Errorf("query = %q, want %q", stub.seenQuery, wantQuery)
+		}
+	})
+
+	t.Run("consumers_absent_cursor_stays_absent", func(t *testing.T) {
+		t.Parallel()
+
+		stub := &stubCore{status: 200, body: `{"data":{"consumers":[]},"truth":null,"error":null}`}
+		if _, err := dispatchAgainstStub(t, stub, "list_service_downstream_consumers",
+			map[string]any{"workload_id": "workload:shop"},
+			"Bearer [REDACTED]", DefaultOptions()); err != nil {
+			t.Fatalf("Dispatch() error = %v, want nil", err)
+		}
+		if stub.seenPath != "/api/v0/services/workload:shop/downstream-consumers" {
+			t.Errorf("path = %q, want the workload handle whole", stub.seenPath)
+		}
+		wantQuery := "service_id=workload%3Ashop"
+		if stub.seenQuery != wantQuery {
+			t.Errorf("query = %q, want %q", stub.seenQuery, wantQuery)
+		}
+	})
+}

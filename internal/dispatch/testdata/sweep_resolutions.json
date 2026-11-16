@@ -1390,7 +1390,10 @@
       "body": null,
       "label": "default",
       "method": "GET",
-      "path": "/api/v0/repositories/$REPO/context"
+      "path": "/api/v0/repositories/$REPO/context",
+      "query": {
+        "evidence_detail": "handles"
+      }
     }
   ],
   "get_repo_story": [
@@ -1401,7 +1404,10 @@
       "body": null,
       "label": "default",
       "method": "GET",
-      "path": "/api/v0/repositories/$REPO/story"
+      "path": "/api/v0/repositories/$REPO/story",
+      "query": {
+        "evidence_detail": "handles"
+      }
     }
   ],
   "get_repo_summary": [
@@ -1892,6 +1898,7 @@
         "source_module": "sweep"
       },
       "body": {
+        "external_only": false,
         "language": "",
         "limit": 5,
         "max_cycle_length": 0,
@@ -2258,7 +2265,8 @@
       "path": "/api/v0/repositories",
       "query": {
         "limit": "50",
-        "offset": "0"
+        "offset": "0",
+        "projection": "compact"
       }
     }
   ],
@@ -2709,19 +2717,31 @@
       }
     }
   ],
+  "list_service_downstream_consumers": [
+    {
+      "arguments": {
+        "workload_id": "sweep-seed-missing"
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/services/sweep-seed-missing/downstream-consumers",
+      "query": {}
+    }
+  ],
   "list_ssm_host_inventory": [
-   {
-     "arguments": {
-      "limit": 5
-     },
-     "body": null,
-     "label": "default",
-     "method": "GET",
-     "path": "/api/v0/cloud/ssm-host-inventory",
-     "query": {
-      "limit": "5"
-     }
-   }
+    {
+      "arguments": {
+        "limit": 5
+      },
+      "body": null,
+      "label": "default",
+      "method": "GET",
+      "path": "/api/v0/cloud/ssm-host-inventory",
+      "query": {
+        "limit": "5"
+      }
+    }
   ],
   "list_supply_chain_impact_findings": [
     {

@@ -23,6 +23,11 @@ import (
 // maxSuggestions caps the closest registered names an unknown target gets.
 const maxSuggestions = 3
 
+// maxArgumentNames caps the argument-name echo in an invalid-arguments
+// result. A caller with a typo only needs the names to fix it; find_tool
+// serves the full schema, so one typo never echoes the whole thing.
+const maxArgumentNames = 50
+
 // MaxToolNameBytes is the longest call_tool name the router reads. A longer
 // name is rejected with a fixed error that does not echo it, before any
 // lookup or edit-distance work. Registered names are far shorter.
@@ -61,19 +66,8 @@ func (e *Engine) Call(ctx context.Context, req Request, args map[string]any) Cal
 			map[string]any{"tool": name, "suggestions": e.closestNames(name)})
 		return out
 	}
-	example, ok := e.examples[name]
-	if !ok {
-		example = nil
-	}
 	if errs, truncated := ValidateArgumentsDetail(tool.InputSchema, arguments); len(errs) != 0 {
-		out.Result = errorResult("mcp_router_invalid_arguments", "arguments for "+name+" do not match its input schema",
-			map[string]any{
-				"tool":                   name,
-				"field_errors":           errs,
-				"field_errors_truncated": truncated,
-				"input_schema":           tool.InputSchema,
-				"example":                map[string]any{"name": name, "arguments": example},
-			})
+		out.Result = targetInvalidArgumentsResult(name, errs, truncated, tool.InputSchema)
 		return out
 	}
 
@@ -96,6 +90,70 @@ func toolSchema(name string) any {
 		}
 	}
 	return nil
+}
+
+// targetInvalidArgumentsResult builds the mcp_router_invalid_arguments result
+// for a target whose arguments violate its input schema, with the capped
+// argument-name echo and the find_tool schema hint. call_tool and the direct
+// tools/call path share it so both refusals are byte-identical.
+func targetInvalidArgumentsResult(name string, errs []FieldError, truncated bool, schema any) ToolResult {
+	return errorResult("mcp_router_invalid_arguments", "arguments for "+name+" do not match its input schema",
+		map[string]any{
+			"tool":                   name,
+			"field_errors":           errs,
+			"field_errors_truncated": truncated,
+			"argument_names":         schemaArgumentNames(schema),
+			"schema_hint":            "call find_tool to see the full input schema and example for " + name,
+		})
+}
+
+// ValidateDirectCall checks arguments against the named tool's input schema
+// and reports the router's mcp_router_invalid_arguments result when they
+// violate it, or nil when they are valid or the tool is unknown. The direct
+// tools/call path uses it so a direct call is validated exactly as call_tool
+// validates its target (eshu-hq/eshu-mcp#86).
+func ValidateDirectCall(tools []registry.ToolDefinition, name string, arguments map[string]any) *ToolResult {
+	var schema any
+	for _, tool := range tools {
+		if tool.Name == name {
+			schema = tool.InputSchema
+			break
+		}
+	}
+	if schema == nil {
+		return nil
+	}
+	errs, truncated := ValidateArgumentsDetail(schema, arguments)
+	if len(errs) == 0 {
+		return nil
+	}
+	result := targetInvalidArgumentsResult(name, errs, truncated, schema)
+	return &result
+}
+
+// schemaArgumentNames returns the argument names a tool's input schema
+// declares, in alphabetical order, capped at maxArgumentNames. It is the
+// reduced echo an invalid-arguments result carries instead of the full input
+// schema: a caller with a typo can see what to fix, and the schema_hint
+// points at find_tool for the full schema and example.
+func schemaArgumentNames(schema any) []string {
+	object, ok := schema.(map[string]any)
+	if !ok {
+		return nil
+	}
+	properties, ok := object["properties"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	names := make([]string, 0, len(properties))
+	for name := range properties {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	if len(names) > maxArgumentNames {
+		names = names[:maxArgumentNames]
+	}
+	return names
 }
 
 // closestNames returns up to maxSuggestions registered names nearest to name

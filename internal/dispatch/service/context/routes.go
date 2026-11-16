@@ -11,10 +11,10 @@ import (
 )
 
 // Route selects the internal HTTP request for a service-context tool
-// without executing it. It reports handled only for the five tools this
+// without executing it. It reports handled only for the six tools this
 // package owns: get_service_context, get_service_story,
-// list_service_api_endpoints, get_service_intelligence_report, and
-// investigate_service. Family
+// list_service_api_endpoints, list_service_downstream_consumers,
+// get_service_intelligence_report, and investigate_service. Family
 // membership is an explicit name switch, never a prefix match. Unlike the
 // sibling route-selector packages (deadcode, codequality, entityresolution,
 // codeintel, iacmanagement), get_service_context and get_service_story
@@ -33,6 +33,9 @@ func Route(toolName string, args routecontract.Arguments) (routecontract.Request
 	case "list_service_api_endpoints":
 		request, err := serviceAPIEndpointsRoute(args)
 		return request, true, err
+	case "list_service_downstream_consumers":
+		request, err := serviceDownstreamConsumersRoute(args)
+		return request, true, err
 	case "get_service_intelligence_report":
 		request, err := serviceIntelligenceReportRoute(args)
 		return request, true, err
@@ -50,9 +53,14 @@ func Route(toolName string, args routecontract.Arguments) (routecontract.Request
 // optional repo and environment) so the report and the story address the same
 // service.
 func serviceIntelligenceReportRoute(args routecontract.Arguments) (routecontract.Request, error) {
-	selector := firstSelector(args, "service_id", "workload_id", "service_name")
+	keys := []string{"service_id", "workload_id", "service_name"}
+	selector := firstSelector(args, keys...)
 	if selector == "" {
-		return routecontract.Request{}, fmt.Errorf("get_service_intelligence_report requires service_id, workload_id, or service_name")
+		return routecontract.Request{}, &routecontract.MissingSelectorError{
+			Tool:    "get_service_intelligence_report",
+			Fields:  keys,
+			Message: "get_service_intelligence_report requires service_id, workload_id, or service_name",
+		}
 	}
 	q := map[string]string{}
 	if env := args.String("environment"); env != "" {
@@ -61,7 +69,11 @@ func serviceIntelligenceReportRoute(args routecontract.Arguments) (routecontract
 	if serviceID := canonicalWorkloadIdentifier(selector); serviceID != "" {
 		q["service_id"] = serviceID
 	}
-	if repo := serviceStoryRepositorySelector(args); repo != "" {
+	repo, err := serviceStoryRepositorySelector("get_service_intelligence_report", args)
+	if err != nil {
+		return routecontract.Request{}, err
+	}
+	if repo != "" {
 		q["repo"] = repo
 	}
 	return routecontract.Request{
@@ -88,9 +100,17 @@ func serviceSelectorRoute(args routecontract.Arguments, toolName string, suffix 
 	selector := firstSelector(args, keys...)
 	if selector == "" {
 		if suffix == "story" {
-			return routecontract.Request{}, fmt.Errorf("%s requires service_id, workload_id, or service_name", toolName)
+			return routecontract.Request{}, &routecontract.MissingSelectorError{
+				Tool:    toolName,
+				Fields:  keys,
+				Message: toolName + " requires service_id, workload_id, or service_name",
+			}
 		}
-		return routecontract.Request{}, fmt.Errorf("%s requires workload_id", toolName)
+		return routecontract.Request{}, &routecontract.MissingSelectorError{
+			Tool:    toolName,
+			Fields:  keys,
+			Message: toolName + " requires workload_id",
+		}
 	}
 	q := map[string]string{}
 	if env := args.String("environment"); env != "" {
@@ -122,7 +142,11 @@ func serviceSelectorRoute(args routecontract.Arguments, toolName string, suffix 
 		if serviceID := canonicalWorkloadIdentifier(selector); serviceID != "" {
 			q["service_id"] = serviceID
 		}
-		if repo := serviceStoryRepositorySelector(args); repo != "" {
+		repo, err := serviceStoryRepositorySelector(toolName, args)
+		if err != nil {
+			return routecontract.Request{}, err
+		}
+		if repo != "" {
 			q["repo"] = repo
 		}
 	}
@@ -139,9 +163,14 @@ func serviceSelectorRoute(args routecontract.Arguments, toolName string, suffix 
 // repo and environment) and page parameters. limit/offset travel only when the
 // caller names them so the handler owns defaults, clamping, and 400s.
 func serviceAPIEndpointsRoute(args routecontract.Arguments) (routecontract.Request, error) {
-	selector := firstSelector(args, "service_id", "workload_id", "service_name")
+	keys := []string{"service_id", "workload_id", "service_name"}
+	selector := firstSelector(args, keys...)
 	if selector == "" {
-		return routecontract.Request{}, fmt.Errorf("list_service_api_endpoints requires service_id, workload_id, or service_name")
+		return routecontract.Request{}, &routecontract.MissingSelectorError{
+			Tool:    "list_service_api_endpoints",
+			Fields:  keys,
+			Message: "list_service_api_endpoints requires service_id, workload_id, or service_name",
+		}
 	}
 	q := map[string]string{}
 	if env := args.String("environment"); env != "" {
@@ -150,7 +179,11 @@ func serviceAPIEndpointsRoute(args routecontract.Arguments) (routecontract.Reque
 	if serviceID := canonicalWorkloadIdentifier(selector); serviceID != "" {
 		q["service_id"] = serviceID
 	}
-	if repo := serviceStoryRepositorySelector(args); repo != "" {
+	repo, err := serviceStoryRepositorySelector("list_service_api_endpoints", args)
+	if err != nil {
+		return routecontract.Request{}, err
+	}
+	if repo != "" {
 		q["repo"] = repo
 	}
 	if _, present := args["limit"]; present {
@@ -166,6 +199,53 @@ func serviceAPIEndpointsRoute(args routecontract.Arguments) (routecontract.Reque
 	}, nil
 }
 
+// serviceDownstreamConsumersRoute resolves list_service_downstream_consumers
+// to GET /api/v0/services/{selector}/downstream-consumers with the
+// get_service_story selector parity (service_id, workload_id, or
+// service_name, plus optional repo and environment) and the keyset page
+// parameters. limit and the after_repository/after_repo_id cursor travel
+// only when the caller names them so the handler owns defaults, clamping,
+// and 400s.
+func serviceDownstreamConsumersRoute(args routecontract.Arguments) (routecontract.Request, error) {
+	keys := []string{"service_id", "workload_id", "service_name"}
+	selector := firstSelector(args, keys...)
+	if selector == "" {
+		return routecontract.Request{}, &routecontract.MissingSelectorError{
+			Tool:    "list_service_downstream_consumers",
+			Fields:  keys,
+			Message: "list_service_downstream_consumers requires service_id, workload_id, or service_name",
+		}
+	}
+	q := map[string]string{}
+	if env := args.String("environment"); env != "" {
+		q["environment"] = env
+	}
+	if serviceID := canonicalWorkloadIdentifier(selector); serviceID != "" {
+		q["service_id"] = serviceID
+	}
+	repo, err := serviceStoryRepositorySelector("list_service_downstream_consumers", args)
+	if err != nil {
+		return routecontract.Request{}, err
+	}
+	if repo != "" {
+		q["repo"] = repo
+	}
+	if _, present := args["limit"]; present {
+		q["limit"] = strconv.Itoa(args.IntOr("limit", 0))
+	}
+	if afterRepo := args.String("after_repository"); afterRepo != "" {
+		q["after_repository"] = afterRepo
+	}
+	if afterID := args.String("after_repo_id"); afterID != "" {
+		q["after_repo_id"] = afterID
+	}
+	return routecontract.Request{
+		Method: "GET",
+		Path:   "/api/v0/services/" + url.PathEscape(normalizeQualifiedIdentifier(selector)) + "/downstream-consumers",
+		Query:  q,
+	}, nil
+}
+
 // investigateServiceRoute resolves investigate_service to GET
 // /api/v0/investigations/services/{service_name}. It accepts service_id or
 // service_name, checked in that order. workload_id is deliberately not an
@@ -174,9 +254,14 @@ func serviceAPIEndpointsRoute(args routecontract.Arguments) (routecontract.Reque
 // selector is refused here by name instead of reaching the handler as an empty
 // path segment.
 func investigateServiceRoute(args routecontract.Arguments) (routecontract.Request, error) {
-	serviceName := firstSelector(args, "service_id", "service_name")
+	keys := []string{"service_id", "service_name"}
+	serviceName := firstSelector(args, keys...)
 	if serviceName == "" {
-		return routecontract.Request{}, fmt.Errorf("investigate_service requires service_id or service_name")
+		return routecontract.Request{}, &routecontract.MissingSelectorError{
+			Tool:    "investigate_service",
+			Fields:  keys,
+			Message: "investigate_service requires service_id or service_name",
+		}
 	}
 	q := map[string]string{
 		"environment": args.String("environment"),
@@ -186,7 +271,11 @@ func investigateServiceRoute(args routecontract.Arguments) (routecontract.Reques
 	if serviceID := canonicalWorkloadIdentifier(serviceName); serviceID != "" {
 		q["service_id"] = serviceID
 	}
-	if repo := serviceStoryRepositorySelector(args); repo != "" {
+	repo, err := serviceStoryRepositorySelector("investigate_service", args)
+	if err != nil {
+		return routecontract.Request{}, err
+	}
+	if repo != "" {
 		q["repo"] = repo
 	}
 	return routecontract.Request{
@@ -208,16 +297,29 @@ func firstSelector(args routecontract.Arguments, keys ...string) string {
 	return ""
 }
 
-// serviceStoryRepositorySelector returns the first non-blank repository
-// selector among repo, repository_id, and repo_id, matching the alias order
-// the pre-extraction root switch checked.
-func serviceStoryRepositorySelector(args routecontract.Arguments) string {
-	for _, key := range []string{"repo", "repository_id", "repo_id"} {
-		if selector := strings.TrimSpace(args.String(key)); selector != "" {
-			return selector
+// serviceStoryRepositorySelector returns the repository selector among repo,
+// repository_id, and repo_id. The three are aliases for one filter, so a
+// caller that sends more than one with different values is refused here
+// instead of letting one silently win (eshu-hq/eshu-mcp#75): a conflicting
+// filter hides which repository the caller meant. Identical values are
+// accepted, and a missing filter returns "" with a nil error.
+func serviceStoryRepositorySelector(toolName string, args routecontract.Arguments) (string, error) {
+	keys := []string{"repo", "repository_id", "repo_id"}
+	var chosen, chosenKey string
+	for _, key := range keys {
+		selector := strings.TrimSpace(args.String(key))
+		if selector == "" {
+			continue
+		}
+		if chosen == "" {
+			chosen, chosenKey = selector, key
+			continue
+		}
+		if selector != chosen {
+			return "", fmt.Errorf("%s: conflicting repository selectors %s and %s; give one", toolName, chosenKey, key)
 		}
 	}
-	return ""
+	return chosen, nil
 }
 
 // normalizeQualifiedIdentifier strips a "<type>:" prefix from a qualified

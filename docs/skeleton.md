@@ -1,7 +1,7 @@
 # Walking skeleton (Refs `eshu-hq/eshu#9498`, part of `eshu-hq/eshu#6707`)
 
 The destination builds, tests, and ships as its own module. It serves the
-pinned 172-tool registry and reaches core truth only through versioned HTTP
+pinned 173-tool registry and reaches core truth only through versioned HTTP
 read contracts. Tool dispatch, the router, the HTTP/SSE transport, and edge
 credential handling are landed: this is the full read path, proven by the
 independent build, test, and image steps.
@@ -43,11 +43,12 @@ independent build, test, and image steps.
 ## Proof (local, this increment)
 
 - `go build ./...`, `go test ./... -count=1`, and the race suite pass.
-- `GET /healthz` answers the contract version, 172 tools, and the
+- `GET /healthz` answers the contract version, 173 tools, and the
   core origin from the built binary; unknown paths answer 404.
-- `python3 scripts/check-parity.py` passes: 172 tools, first `find_code`,
+- `python3 scripts/check-parity.py` passes: 173 tools, first `find_code`,
   tail `search_php_configuration` + `list_ssm_host_inventory` (#9670) +
-  `list_service_api_endpoints` (#10477), source commit `9922b49`.
+  `list_service_api_endpoints` (#10477) +
+  `list_service_downstream_consumers` (#10535), source commit `9922b49`.
 
 ## NOT_CHECKED
 

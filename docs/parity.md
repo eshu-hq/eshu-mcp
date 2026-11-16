@@ -11,33 +11,111 @@ name-by-name and position-by-position against the live source census with an
 independent re-extraction (the check script parses the source file again
 instead of trusting the seed script's memory).
 
-## Results (reseed, 2026-10-29: source `9922b49`, 169 tools; appendix #9670: 171 tools; appendix #10477: 172 tools)
+## Results (reseed, 2026-11-13: source `93f481e3d2`, 173 tools, fix-07 part C)
 
 - `docs/source/CUTOVER_OWNERSHIP.md` is byte-identical to
-  `go/cmd/mcp-server/CUTOVER_OWNERSHIP.md` at
-  `9922b492d8a3a25ef87b39d38864b36ff522a6ce`:
+  `go/cmd/api/CUTOVER_OWNERSHIP.md` at
+  `93f481e3d261cb5b126d765834b4d688b67693b3`:
   `cmp` exited 0 and both files hash to
-  `1daf8a6d7637981a8db8d08485fad77561c4749bbd794d3c9671d79bfe7a85df`.
-- `contracts/tool-registry/v1/tools.json`: source census count 171, dest
-  count 172, order identical through the census tail. First tool `find_code`,
-  tail tools `search_php_configuration`, `list_ssm_host_inventory`, then the
-  `eshu#10477` appendix `list_service_api_endpoints`. All 172 names
+  `ed6909ca4169804a120a14674842c11c111176a32d4ae92a832d9b88a874cf72`.
+- `contracts/tool-registry/v1/tools.json`: source census count 173, dest
+  count 173, order byte-identical to the source census. First tool
+  `find_code`; the former appendix pair `list_service_api_endpoints` and
+  `list_service_downstream_consumers` now sits at positions 117-118 in
+  source registration order, and the tail is
+  `list_runtime_version_declarations`, `search_dockerfile_installs`,
+  `search_php_configuration`, `list_ssm_host_inventory`. All 173 names
   unique. Census count constant still matches the source commit.
+- `contracts/tool-registry/v1/tool_definitions.json` gains the
+  `router_catalog` section: 173 rows keyed by tool name, every cost in
+  `low/moderate/high`, 34 canonical marks, every row carrying a non-empty
+  intent list of at most 7 phrases. The `eshu-hq/eshu-mcp#61` edge
+  contract (2 required-field additions, 34 selector sentences, 2 example
+  keys) is re-applied by `render.py` onto the verbatim facts, so the
+  generated file never needs hand edits. Batched core-side entry changes
+  in the same pin: `advisory_retracted` suppression state on the three
+  supply-chain impact tools, new `service_id`/`workload_id`/`environment`
+  group-by dimensions on `get_supply_chain_impact_inventory`, and
+  description refreshes on `list_collectors` and
+  `list_runtime_version_declarations`.
 - Envelope MIME `application/eshu.envelope+json`, dispatch timeout `30s`,
   response budget 262144 bytes, router limits 5/10: equal to the source
   census pins.
 
-The prior seed (2026-10-28, source `e4c385f4`, 168 tools ending at
-`list_runtime_version_declarations`) is superseded: the reseed restored the
-missing `search_dockerfile_installs` tool from `eshu-hq/eshu#9303`, and the
-#9670 appendix ports the two tools the source census appended after the
-reseed (`search_php_configuration`, `list_ssm_host_inventory`), verified
-verbatim against the in-tree census tail and routes at
-`b1748fc0b1b65d8f2ee29fbd58bbf5b2251d6a84`.
+The prior seed (2026-10-29, source `9922b49`, 173 tools with the
+`#10477`/`#10535` pair tail-appended ahead of census) is superseded: the
+pair now rides in source registration order, the census constant is 173,
+and the ownership map follows the in-tree server move to `go/cmd/api`.
 
 Run `python3 scripts/check-parity.py` to re-verify the in-repo invariants.
 Cross-repo byte-parity re-verification needs the source checkout; the
 commands are recorded above.
+
+## Declare reseed (eshu-hq/eshu-mcp#77)
+
+Per the arbiter ruling on #73, closed-world validation stays held until
+every known working key is declared-or-removed in core schema source. This
+reseed declares the incident/run fallback pair and keeps both route reads:
+
+- `get_incident_context` gains optional `incident_id` (older spelling; the
+  route falls back to it when `provider_incident_id` is absent, empty, or
+  wrong-typed). Required stays `["provider_incident_id"]`.
+- `list_ci_cd_run_correlations` gains optional `run_id` (older spelling;
+  the listing route falls back to it and echoes it under its own key).
+  No required keys.
+
+Re-rendered at the merged eshu content `dd63fcfe4d` (PR eshu-hq/eshu#10703).
+Census stays 173 with byte-identical tool order and tail; the sweep now
+carries current core behavior (evidence_detail handles defaults,
+external_only) alongside the new alias rows; the ownership map is
+byte-identical (`ed6909ca…`, `cmp` clean); envelope, dispatch, and router
+pins unchanged.
+Proof: `python3 scripts/check-parity.py`, `go test ./...`, and the new
+`TestIncidentAndRunFallbackKeysDeclared` plus the route-keeps-reads pins
+in `internal/dispatch` and `internal/dispatch/cicd`.
+
+## Selector precedence and decision table (eshu-hq/eshu-mcp#75)
+
+The tool descriptions now state, per family, which selector wins and when to
+use one repo tool over another. No tool is removed or renamed. The arbiter
+ruling (#75) is "reject conflicting selectors; identical or agreeing values
+are accepted; keep first-wins only where it is already pinned":
+
+- **Service selectors** (`get_service_story`, `list_service_api_endpoints`,
+  `list_service_downstream_consumers`, `get_service_intelligence_report`):
+  `service_id` > `workload_id` > `service_name`, first-wins — already pinned
+  by `TestListServiceAPIEndpointsSelectorPrecedence` and
+  `TestListServiceDownstreamConsumersSelectorPrecedence`, so it is documented
+  in place, not changed. `investigate_service`: `service_id` > `service_name`.
+- **Repository filter** (`repo`, `repository_id`, `repo_id`): the three are
+  aliases for one filter and are now refused when conflicting
+  (`serviceStoryRepositorySelector` returns an error naming both), accepted
+  when identical. This was previously silent first-wins, documented nowhere;
+  it is now a RED/GREEN-pinned route refusal in
+  `internal/dispatch/service/context`.
+- **Repo filter applicability**: the `repo`/`repository_id`/`repo_id` field
+  descriptions said "used with service_name"; they now say the filter applies
+  with every service selector (`service_id`, `workload_id`, or `service_name`).
+- **Decision table**: `get_repo_summary` for counts and languages,
+  `get_repo_context` for relationships, consumers, and API surface,
+  `get_repo_story` for a narrative with sections and drilldowns. The sentence
+  is appended to the three repo tool descriptions and the five service-family
+  descriptions.
+
+Description changes land in `scripts/seed/render.py` (the
+`SELECTOR_CONTRACT_SENTENCES` and `SELECTOR_FIELD_DESCRIPTIONS` tables), then
+re-render at the unchanged source commit `dd63fcfe4d`, so no hand edits. The
+sentences are pinned by `TestSelectorPrecedenceContractText` and the field
+wording by `TestRepoFilterFieldDescriptions`, in the style of the #61
+`TestDeliberateSelectorContractText`. `TestResolveRouteRefusesMissingSelector`
+is unchanged (the refusal table has no repo-conflict rows).
+
+Edge cases noted: a non-handle `service_id` is dropped from the query
+(`canonicalWorkloadIdentifier`); a plain name in `workload_id` goes into the
+path only; the repo-filter conflict check trims both aliases before comparing.
+
+Proof: `python3 scripts/check-parity.py`, `go test ./internal/dispatch/...`,
+`go test .`, `go vet ./...`, and the new pins above.
 
 ## Edge credential admission (eshu-hq/eshu-mcp#48, #50)
 
@@ -182,6 +260,69 @@ schema validation produces.
   route-builder refusals are pinned by
   `TestResolveRouteRefusesMissingSelector`, and the envelope by the
   `call_tool` tests in `internal/router/call_invalid_arguments_test.go`.
+
+### Missing-selector structured refusal (eshu-hq/eshu-mcp#73, slice 1)
+
+Deliberate divergence from the plain-text rendering above. Six tools whose
+schemas deliberately stay open (the `get_repo_summary` repo_id/repo_name
+pair and the service selector groups) pass the schema gate and previously
+fell through to the plain-text route refusal. Those refusals now carry
+`routecontract.MissingSelectorError` (tool plus selector fields in route
+precedence order) and render the canonical
+`mcp_router_invalid_arguments` envelope with `details.tool` and
+`details.fields`, on both the direct `tools/call` and routed `call_tool`
+paths, which share `ToolErrorResultForCall`. Refusal texts are
+byte-identical, so `TestResolveRouteRefusesMissingSelector` still holds;
+the envelope is pinned by `TestRouteRefusalRendersInvalidArguments` and
+`TestCallSelectorRefusalIsInvalidArguments`.
+
+### Typed single-selector refusals (eshu-hq/eshu-mcp#73, slice 2)
+
+The remaining single-selector route refusals — the explicit checks in
+`routes_status.go` and `routes_repository_files.go`, and the named-missing
+arm of the shared empty-path-segment guard — carry
+`routecontract.MissingSelectorError` with byte-identical texts, so both
+`tools/call` paths render the structured envelope; pinned by the extended
+`selectorRefusalCases` table and `TestDirectSelectorRefusalIsInvalidArguments`.
+The empty-list fallback arm and the relationships format errors stay plain
+text: with no missing schema-required argument there is no field list to name.
+
+### Capped invalid-arguments echo (eshu-hq/eshu-mcp#73, slice 3)
+
+The `mcp_router_invalid_arguments` envelope a schema-invalid `call_tool`
+answers no longer echoes the full `input_schema` and curated `example` —
+up to several kilobytes for the supply-chain impact tools, as the issue
+measured. The details now carry the failing `field_errors` plus
+`argument_names` (the schema's declared argument names, alphabetical and
+capped at 50) and a `schema_hint` that points the caller at `find_tool`
+for the full schema and example. `find_tool` already returns each
+candidate's `inputSchema` and `example`, so nothing is lost: the echo only
+moves the full-schema source off the error path. Pinned by
+`TestCallInvalidArgumentsEchoIsCapped` and
+`TestSchemaArgumentNamesCapsAndSorts`.
+
+Closed-world validation (eshu-hq/eshu-mcp#86) now honors an explicit
+`additionalProperties: false`: a key the schema does not declare is rejected
+with an `additionalProperties` field error naming it, so a `call_tool` wrapper
+typo fails validation instead of dispatching into a route refusal. The router
+pair (`find_tool`, `call_tool`) declares `additionalProperties: false`; the
+173 target tools keep the open-world tolerance (undeclared properties ignored)
+until the declare-or-remove follow-ups (#76, #78, #79, #80) land, so a
+misspelled target selector such as `service` for `service_name` still reaches
+the route refusal. The per-tool route-read audit behind the eventual full
+close (every tool's route reads are schema-declared except
+`resolve_entity`'s deprecated `name` alias, the `incident_id` / `run_id`
+fallbacks, the `dead_code` `exclude_decorated_with` filter, the `search_*`
+`query` / `repo_id` / `rank_cursor` selectors, and the three whole-map
+pass-through routes `explain_dependency_path`, `get_file_lines`, and
+`list_runtime_version_declarations`) is now recorded in
+`docs/route-read-census.md`.
+
+The direct `tools/call` path now validates with the same `ValidateArguments`
+the router applies to a `call_tool` target, so a schema-invalid direct call
+answers the same `mcp_router_invalid_arguments` result naming the field
+instead of reaching the route or core; pinned by
+`TestDirectCallValidatesArguments`.
 
 ## NOT_CHECKED
 

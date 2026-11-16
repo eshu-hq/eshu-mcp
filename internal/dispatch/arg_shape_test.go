@@ -35,6 +35,7 @@ func TestResolveRouteRefusesMissingSelector(t *testing.T) {
 		"get_service_intelligence_report":               "get_service_intelligence_report requires service_id, workload_id, or service_name",
 		"get_service_story":                             "get_service_story requires service_id, workload_id, or service_name",
 		"list_service_api_endpoints":                    "list_service_api_endpoints requires service_id, workload_id, or service_name",
+		"list_service_downstream_consumers":             "list_service_downstream_consumers requires service_id, workload_id, or service_name",
 		"get_workload_context":                          "workload_id is required",
 		"get_workload_story":                            "workload_id is required",
 		"investigate_service":                           "investigate_service requires service_id or service_name",
@@ -43,8 +44,8 @@ func TestResolveRouteRefusesMissingSelector(t *testing.T) {
 		"list_reducer_input_invalid_facts":              "scope_id is required",
 		"list_repository_files":                         "repo_id is required",
 	}
-	if len(cases) != 23 {
-		t.Fatalf("refusal table has %d tools, want the 23 honest-error refusals", len(cases))
+	if len(cases) != 24 {
+		t.Fatalf("refusal table has %d tools, want the 24 honest-error refusals", len(cases))
 	}
 	for tool, want := range cases {
 		route, err := ResolveRoute(tool, map[string]any{})
@@ -55,6 +56,34 @@ func TestResolveRouteRefusesMissingSelector(t *testing.T) {
 		if err.Error() != want {
 			t.Errorf("ResolveRoute(%s, {}) error = %q, want %q", tool, err.Error(), want)
 		}
+	}
+}
+
+// TestResolveRouteRefusesConflictingRepositorySelectors proves the repo
+// filter aliases refuse conflicting values (eshu-hq/eshu-mcp#75) and accept
+// identical ones, at the dispatch level where the refusal surfaces.
+func TestResolveRouteRefusesConflictingRepositorySelectors(t *testing.T) {
+	t.Parallel()
+
+	_, err := ResolveRoute("get_service_story", map[string]any{
+		"service_id":    "service:pay",
+		"repo":          "r1",
+		"repository_id": "r2",
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflicting repository selectors repo and repository_id") {
+		t.Errorf("ResolveRoute(conflicting repo aliases) error = %v, want the conflict refusal", err)
+	}
+
+	route, err := ResolveRoute("get_service_story", map[string]any{
+		"service_id": "service:pay",
+		"repo":       "r1",
+		"repo_id":    "r1",
+	})
+	if err != nil {
+		t.Fatalf("ResolveRoute(identical repo aliases) error = %v, want nil", err)
+	}
+	if route.Query["repo"] != "r1" {
+		t.Fatalf("ResolveRoute(identical repo aliases) query = %v, want repo=r1", route.Query)
 	}
 }
 

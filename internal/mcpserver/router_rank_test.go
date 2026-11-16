@@ -27,7 +27,7 @@ func TestRouterSurfaceWithRankerRanks(t *testing.T) {
 	}
 	core := &stubCore{status: 200, body: `{}`}
 	mcp, cleanup := testServer(core, tools, WithToolSurface(router.SurfaceRouter), WithRouterRanker(
-		func(tools []registry.ToolDefinition) router.Ranker { return rank.New(tools) }))
+		func(tools []registry.ToolDefinition) router.Ranker { return rank.New(tools, nil) }))
 	defer cleanup()
 	mux := mcp.Handler(nil)
 

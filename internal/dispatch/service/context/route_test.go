@@ -105,6 +105,36 @@ func wireEqual(got, want map[string]any) bool {
 	return reflect.DeepEqual(gotNorm, wantNorm)
 }
 
+// TestRepositorySelectorPrecedence proves the repo filter refuses conflicting
+// aliases (eshu-hq/eshu-mcp#75) instead of letting one silently win, and
+// accepts identical values.
+func TestRepositorySelectorPrecedence(t *testing.T) {
+	t.Parallel()
+
+	// Conflicting aliases are refused with a named error.
+	_, _, err := Route("get_service_story", routecontract.Arguments{
+		"service_id":    "service:pay",
+		"repo":          "r1",
+		"repository_id": "r2",
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflicting repository selectors repo and repository_id") {
+		t.Errorf("Route(conflicting repo aliases) error = %v, want the conflict refusal", err)
+	}
+
+	// Identical aliases are accepted and resolve to one repo filter.
+	route, _, err := Route("get_service_story", routecontract.Arguments{
+		"service_id": "service:pay",
+		"repo":       "r1",
+		"repo_id":    "r1",
+	})
+	if err != nil {
+		t.Fatalf("Route(identical repo aliases) error = %v, want nil", err)
+	}
+	if route.Query["repo"] != "r1" {
+		t.Fatalf("Route(identical repo aliases) query = %v, want repo=r1", route.Query)
+	}
+}
+
 // TestRouteRefusals proves the family refuses a missing service selector
 // with the exact source errors instead of building a request with an empty
 // path segment.

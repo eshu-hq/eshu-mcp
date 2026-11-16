@@ -9,9 +9,11 @@ package dispatch
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
+	"github.com/eshu-hq/eshu-mcp/internal/readcontract"
 	"github.com/eshu-hq/eshu-mcp/internal/resultshape"
 )
 
@@ -119,6 +121,20 @@ func ToolErrorResult(mode resultshape.Mode, err error) ToolResult {
 // envelope, measured by the same renderer that sends it. Dual keeps its
 // original bytes.
 func ToolErrorResultForCall(mode resultshape.Mode, toolName string, err error, logger *slog.Logger, budget int) ToolResult {
+	// A body over the raw read cap renders the same over-budget envelope
+	// as the render budget: the wire read stops at cap+1, so the true
+	// size is unknown beyond it and is reported as at least cap+1. The
+	// core body itself is never echoed. The envelope then passes through
+	// the render guard like any other result, so a disabled guard (budget
+	// <= 0) leaves it untouched.
+	if fired, ok := overBudgetCap(err); ok {
+		if fired <= 0 {
+			fired = readcontract.DefaultResponseByteBudget
+		}
+		over := overBudgetResult(toolName, fired+1, fired)
+		over.Shape = resultshape.OrDual(mode)
+		return RenderToolResult(toolName, applyResponseBudget(over, toolName, budget, logger))
+	}
 	structured, ok := dispatchErrorStructuredContent(err)
 	if !ok && resultshape.OrDual(mode) == resultshape.Structured {
 		envelope := &ResponseEnvelope{Error: &ErrorEnvelope{
@@ -154,4 +170,15 @@ func ToolErrorResultForCall(mode resultshape.Mode, toolName string, err error, l
 		},
 	})
 	return result
+}
+
+// overBudgetCap reports the raw read cap that fired when err is a
+// read-contract over-budget refusal. Anything else reports false and keeps
+// the caller's rendering.
+func overBudgetCap(err error) (int, bool) {
+	var over *readcontract.OverBudgetError
+	if !errors.As(err, &over) {
+		return 0, false
+	}
+	return over.Budget, true
 }

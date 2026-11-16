@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	registry "github.com/eshu-hq/eshu-mcp"
+	"github.com/eshu-hq/eshu-mcp/internal/dispatch"
+	"github.com/eshu-hq/eshu-mcp/internal/resultshape"
 )
 
 // Required-argument wire shape (eshu-hq/eshu-mcp#61): a call_tool target
@@ -144,6 +146,7 @@ func TestCallSelectorAlternativesDispatch(t *testing.T) {
 		"get_service_story":                               {},
 		"get_service_intelligence_report":                 {},
 		"list_service_api_endpoints":                      {},
+		"list_service_downstream_consumers":               {},
 		"investigate_service":                             {},
 		"search_registry_bundles":                         {},
 		"search_php_configuration":                        {},
@@ -193,5 +196,106 @@ func TestCallSelectorAlternativesDispatch(t *testing.T) {
 			}
 			t.Errorf("Call(%s, %v) refused by validation, want dispatch to the handler: %s", name, args, body)
 		}
+	}
+}
+
+// serverRunDispatch serves a dispatched call_tool target the way the MCP root
+// does: production dispatch, then the shared ToolErrorResultForCall rendering
+// the root serves for a direct tools/call. A route refusal short-circuits
+// before any core call, so the read client is never touched.
+func serverRunDispatch(ctx context.Context, name string, args map[string]any) (any, error) {
+	_, err := dispatch.Dispatch(ctx, nil, name, args, "", nil, dispatch.DefaultOptions())
+	if err != nil {
+		return dispatch.ToolErrorResultForCall(resultshape.Dual, name, err, nil, dispatch.DefaultOptions().ResponseByteBudget), nil
+	}
+	return nil, nil
+}
+
+// TestCallSelectorRefusalIsInvalidArguments proves the #73 structured-refusal
+// fix: a call_tool call that passes schema validation but names no usable
+// selector still answers mcp_router_invalid_arguments, now with the selector
+// fields that would satisfy the route. Validation still dispatches (see
+// TestCallSelectorAlternativesDispatch); the refusal renders downstream.
+// A misspelled selector such as service for service_name still reaches this
+// table (target schemas stay open until the declare-or-remove follow-ups
+// land); the call_tool wrapper's own closed-world rejection is pinned by
+// TestCallToolRejectsUndeclaredKey.
+func TestCallSelectorRefusalIsInvalidArguments(t *testing.T) {
+	t.Parallel()
+
+	engine := testEngine()
+	storyFields := []string{"service_id", "workload_id", "service_name"}
+	cases := []struct {
+		tool   string
+		args   map[string]any
+		fields []string
+	}{
+		{"get_service_story", map[string]any{}, storyFields},
+		{"get_service_story", map[string]any{"service_id": "   "}, storyFields},
+		{"get_service_story", map[string]any{"service_id": nil}, storyFields},
+		{"get_service_intelligence_report", map[string]any{}, storyFields},
+		{"list_service_api_endpoints", map[string]any{}, storyFields},
+		{"list_service_downstream_consumers", map[string]any{}, storyFields},
+		{"investigate_service", map[string]any{}, []string{"service_id", "service_name"}},
+		{"get_repo_summary", map[string]any{}, []string{"repo_id", "repo_name"}},
+		{"get_service_context", map[string]any{"workload_id": "   "}, []string{"workload_id"}},
+	}
+	for _, tc := range cases {
+		out := engine.Call(context.Background(), Request{Dispatch: serverRunDispatch},
+			map[string]any{"name": tc.tool, "arguments": tc.args})
+		if !out.Dispatched || out.Err != nil {
+			t.Errorf("Call(%s, %v) dispatched = %v err = %v, want the route refusal rendered downstream",
+				tc.tool, tc.args, out.Dispatched, out.Err)
+			continue
+		}
+		rendered, ok := out.Value.(dispatch.ToolResult)
+		if !ok {
+			t.Errorf("Call(%s, %v) value type %T, want dispatch.ToolResult", tc.tool, tc.args, out.Value)
+			continue
+		}
+		if !rendered.IsError {
+			t.Errorf("Call(%s, %v) isError = false, want true", tc.tool, tc.args)
+			continue
+		}
+		body, marshalErr := json.Marshal(rendered.StructuredContent)
+		if marshalErr != nil {
+			t.Fatalf("marshal structured content: %v", marshalErr)
+		}
+		text := string(body)
+		if !strings.Contains(text, "mcp_router_invalid_arguments") {
+			t.Errorf("Call(%s, %v) lacks the invalid-arguments code: %s", tc.tool, tc.args, text)
+			continue
+		}
+		for _, field := range tc.fields {
+			if !strings.Contains(text, field) {
+				t.Errorf("Call(%s, %v) names no %q field: %s", tc.tool, tc.args, field, text)
+			}
+		}
+	}
+}
+
+// TestCallToolRejectsUndeclaredKey proves the closed-world fix
+// (eshu-hq/eshu-mcp#86): a key the call_tool schema does not declare (it
+// declares additionalProperties: false) fails call_tool validation naming the
+// key, before any dispatch. The known-key counterpart is
+// TestCallDispatchesRegisteredTool.
+func TestCallToolRejectsUndeclaredKey(t *testing.T) {
+	t.Parallel()
+
+	engine := testEngine()
+	called := false
+	out := engine.Call(context.Background(), Request{Dispatch: func(context.Context, string, map[string]any) (any, error) {
+		called = true
+		return nil, nil
+	}}, map[string]any{"name": "get_repo_context", "arguments": map[string]any{"repo_id": "r1"}, "typo": 123})
+	if out.Dispatched || called {
+		t.Fatalf("Call() dispatched an undeclared call_tool key, want the invalid-arguments error")
+	}
+	text := invalidArgumentsBody(t, out)
+	if !strings.Contains(text, "typo") {
+		t.Errorf("Call() field errors lack the undeclared key %q: %s", "typo", text)
+	}
+	if !strings.Contains(text, "additionalProperties") {
+		t.Errorf("Call() field errors lack the additionalProperties keyword: %s", text)
 	}
 }
