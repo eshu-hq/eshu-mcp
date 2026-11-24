@@ -20,9 +20,11 @@ flowchart LR
     C --> G[(Graph and durable stores)]
 ```
 
-In short: your client connects here, lists tools, and calls one. We
-forward your credential to the core with each call, and the core has the
-final say on access.
+In short: your client connects here, lists tools, and calls one. By
+default the server exposes a 2-tool router (`find_tool` and `call_tool`)
+in front of all 173 read-only tools so assistants stay within context
+budgets. We forward your credential to the core with each call, and the
+core has the final say on access.
 
 ## Is this the repo you want?
 
@@ -37,7 +39,7 @@ API (use `eshu-api` or the core), changes to stored data or access rules
 
 ## Quickstart
 
-You'll need Go 1.26.10 (see `go.mod`) and a running core. The shared key
+You'll need Go 1.26.11 (see `go.mod`) and a running core. The shared key
 below is the simplest of the three credential options.
 
 ```bash
@@ -74,10 +76,14 @@ with an `Authorization: Bearer <token>` header on both.
 
 ## Related repos
 
-`eshu` holds the core. `eshu-api` is the HTTP front door, `eshu-cli` is
-the command line (its `mcp setup` command can write client config for
-you), and [eshu-deploy](https://github.com/eshu-hq/eshu-deploy) runs the
-full stack.
+[eshu](https://github.com/eshu-hq/eshu) holds the core (see the
+[MCP guide](https://github.com/eshu-hq/eshu/blob/main/docs/public/mcp/index.md) and the 31-repo
+[Repository Map](https://github.com/eshu-hq/eshu/blob/main/REPOSITORIES.md)).
+[eshu-api](https://github.com/eshu-hq/eshu-api) is the HTTP front door,
+[eshu-cli](https://github.com/eshu-hq/eshu-cli) is the command line (its
+`mcp setup` command writes config for Claude Code, Cursor, VS Code, and
+Codex), and [eshu-deploy](https://github.com/eshu-hq/eshu-deploy) runs
+the full stack.
 
 ## Development
 
